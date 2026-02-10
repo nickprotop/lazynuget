@@ -15,6 +15,7 @@ public class NuGetClientService : IDisposable
     private readonly ILogService? _logService;
     private const string SearchBaseUrl = "https://azuresearch-usnc.nuget.org/query";
     private const string RegistrationBaseUrl = "https://api.nuget.org/v3/registration5-semver1";
+    private const string FlatContainerBaseUrl = "https://api.nuget.org/v3-flatcontainer";
 
     public NuGetClientService(ILogService? logService = null)
     {
@@ -59,49 +60,33 @@ public class NuGetClientService : IDisposable
     }
 
     /// <summary>
-    /// Get detailed information about a specific package
+    /// Get detailed information about a specific package.
+    /// Uses the Search API (with packageid: filter) which is reliable and
+    /// doesn't suffer from the registration API's pagination issues.
     /// </summary>
     public async Task<NuGetPackage?> GetPackageDetailsAsync(string packageId, CancellationToken cancellationToken = default)
     {
         try
         {
-            var url = $"{RegistrationBaseUrl}/{packageId.ToLowerInvariant()}/index.json";
-            var response = await _httpClient.GetFromJsonAsync<NuGetRegistrationResponse>(url, cancellationToken);
+            // Use search API with exact packageid filter — returns metadata + versions in one call
+            var url = $"{SearchBaseUrl}?q=packageid:{Uri.EscapeDataString(packageId)}&take=1";
+            var response = await _httpClient.GetFromJsonAsync<NuGetSearchResponse>(url, cancellationToken);
 
-            if (response?.Items == null || response.Items.Count == 0)
-                return null;
-
-            // Get all versions from all pages
-            var allVersions = new List<string>();
-            var latestCatalogEntry = response.Items
-                .SelectMany(i => i.Items ?? new List<NuGetCatalogItem>())
-                .OrderByDescending(i => i.CatalogEntry?.Published)
-                .FirstOrDefault()
-                ?.CatalogEntry;
-
-            foreach (var page in response.Items)
-            {
-                if (page.Items != null)
-                {
-                    allVersions.AddRange(page.Items.Select(i => i.CatalogEntry?.Version ?? string.Empty));
-                }
-            }
-
-            if (latestCatalogEntry == null)
+            var data = response?.Data?.FirstOrDefault();
+            if (data == null)
                 return null;
 
             return new NuGetPackage
             {
-                Id = latestCatalogEntry.Id ?? packageId,
-                Version = latestCatalogEntry.Version ?? string.Empty,
-                Description = latestCatalogEntry.Description ?? string.Empty,
-                ProjectUrl = latestCatalogEntry.ProjectUrl,
-                LicenseUrl = latestCatalogEntry.LicenseUrl,
-                Authors = latestCatalogEntry.Authors?.Split(',').Select(a => a.Trim()).ToList() ?? new List<string>(),
-                Tags = latestCatalogEntry.Tags?.Split(',').Select(t => t.Trim()).ToList() ?? new List<string>(),
-                Published = latestCatalogEntry.Published,
-                Versions = allVersions.OrderByDescending(v => v).ToList(),
-                TotalDownloads = 0 // Registration API doesn't include download count
+                Id = data.Id ?? packageId,
+                Version = data.Version ?? string.Empty,
+                Description = data.Description ?? string.Empty,
+                ProjectUrl = data.ProjectUrl,
+                Authors = data.Authors ?? new List<string>(),
+                Tags = data.Tags ?? new List<string>(),
+                TotalDownloads = data.TotalDownloads,
+                Versions = data.Versions?.Select(v => v.Version ?? string.Empty)
+                    .OrderByDescending(v => v).ToList() ?? new List<string>()
             };
         }
         catch (Exception ex)
@@ -112,17 +97,30 @@ public class NuGetClientService : IDisposable
     }
 
     /// <summary>
-    /// Get the latest version of a package
+    /// Get the latest stable version of a package using the flat container API.
+    /// This is a simple JSON array of all versions — no pagination.
     /// </summary>
     public async Task<string?> GetLatestVersionAsync(string packageId, CancellationToken cancellationToken = default)
     {
         try
         {
-            var package = await GetPackageDetailsAsync(packageId, cancellationToken);
-            return package?.Version;
+            var url = $"{FlatContainerBaseUrl}/{packageId.ToLowerInvariant()}/index.json";
+            var response = await _httpClient.GetFromJsonAsync<FlatContainerResponse>(url, cancellationToken);
+
+            if (response?.Versions == null || response.Versions.Count == 0)
+                return null;
+
+            // Filter to stable versions (no prerelease tags like -beta, -rc, -preview)
+            var stable = response.Versions
+                .Where(v => !v.Contains('-'))
+                .ToList();
+
+            // Return last stable version (flat container returns them in ascending order)
+            return stable.Count > 0 ? stable[^1] : response.Versions[^1];
         }
-        catch
+        catch (Exception ex)
         {
+            _logService?.LogError($"Error getting latest version for {packageId}: {ex.Message}", ex, "NuGet");
             return null;
         }
     }
@@ -239,4 +237,10 @@ internal class NuGetCatalogEntry
 
     [JsonPropertyName("published")]
     public DateTime? Published { get; set; }
+}
+
+internal class FlatContainerResponse
+{
+    [JsonPropertyName("versions")]
+    public List<string> Versions { get; set; } = new();
 }
