@@ -556,14 +556,14 @@ private void OnProjectSelected(ProjectInfo project)
 5. Add version color indicators (green/yellow/red)
 6. Add Esc key → go back to projects view
 
-### Phase 4: Package Operations
-1. Implement DotNetCliService (add/remove/restore)
-2. Build SearchPackageModal with live search
-3. Build ConfirmationModal and ErrorModal
-4. Wire up Ctrl+S search flow → search results in left panel
-5. Wire up Ctrl+I install flow with project selector
-6. Add Ctrl+U update, Ctrl+X remove operations
-7. Add error handling with user feedback
+### Phase 4: Package Operations ✅ COMPLETED
+1. ✅ Implement DotNetCliService (add/remove/restore)
+2. ✅ Build SearchPackageModal with live search
+3. ✅ Build ConfirmationModal and ErrorModal
+4. ✅ Wire up Ctrl+S search flow → search results in left panel
+5. ✅ Wire up install flow with project selector (Enter in Search view)
+6. ✅ Add Ctrl+U update, Ctrl+X remove operations
+7. ✅ Add error handling with user feedback
 
 ### Phase 5: Polish & Refinements
 1. Implement async refresh thread (clock + outdated checks)
