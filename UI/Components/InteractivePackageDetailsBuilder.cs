@@ -161,7 +161,7 @@ public static class InteractivePackageDetailsBuilder
             .Build());
 
         // Remove button
-        buttons.Add(Controls.Button("🗑 Remove Package (Ctrl+X)")
+        buttons.Add(Controls.Button("✕ Remove Package (Ctrl+X)")
             .WithAlignment(HorizontalAlignment.Left)
             .WithMargin(1, 0, 0, 1)
             .OnClick((s, e) => onRemove())
