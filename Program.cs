@@ -1,6 +1,7 @@
 using SharpConsoleUI;
 using SharpConsoleUI.Configuration;
 using SharpConsoleUI.Drivers;
+using LazyNuGet.Services;
 
 namespace LazyNuGet;
 
@@ -8,8 +9,13 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
-        // Use CLI arg if provided, otherwise use current directory
-        string folderPath = args.Length > 0 ? args[0] : Environment.CurrentDirectory;
+        var configService = new ConfigurationService();
+        var settings = configService.Load();
+
+        // Priority: CLI arg > saved last folder > current directory
+        string folderPath = args.Length > 0
+            ? args[0]
+            : settings.LastFolderPath ?? Environment.CurrentDirectory;
 
         // Validate folder exists
         if (!Directory.Exists(folderPath))
@@ -34,7 +40,7 @@ class Program
                     )
                 ));
 
-            using var mainWindow = new LazyNuGetWindow(windowSystem, folderPath);
+            using var mainWindow = new LazyNuGetWindow(windowSystem, folderPath, configService);
             mainWindow.Show();
             await Task.Run(() => windowSystem.Run());
 
