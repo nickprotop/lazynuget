@@ -93,7 +93,7 @@ public static class InteractiveDashboardBuilder
             .WithHeaderColors(Color.Grey70, Color.Black)
             .WithBackgroundColor(null)
             .WithMargin(1, 0, 0, 0)
-            .WithHorizontalAlignment(HorizontalAlignment.Left)
+            .WithWidth(40)
             .Build();
     }
 
