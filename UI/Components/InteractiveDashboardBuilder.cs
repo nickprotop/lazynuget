@@ -111,15 +111,15 @@ public static class InteractiveDashboardBuilder
         // Create table with proper TableControl
         var table = Controls.Table()
             .AddColumn("St", Spectre.Console.Justify.Center, 4)
-            .AddColumn("Package", Spectre.Console.Justify.Left, 30)
-            .AddColumn("Version", Spectre.Console.Justify.Left, 22)
+            .AddColumn("Package", Spectre.Console.Justify.Left)
+            .AddColumn("Version", Spectre.Console.Justify.Left)
             .WithBorderColor(Color.Grey50)
             .SingleLine()
             .ShowHeader()
             .WithHeaderColors(Color.Grey70, Color.Black)
             .WithBackgroundColor(null)
             .WithMargin(1, 1, 0, 0)
-            .WithHorizontalAlignment(HorizontalAlignment.Left);
+            .WithHorizontalAlignment(HorizontalAlignment.Stretch);
 
         // Add package rows
         foreach (var pkg in project.Packages)
@@ -127,11 +127,11 @@ public static class InteractiveDashboardBuilder
             string status = pkg.IsOutdated ? "[yellow]⚠[/]" : "[green]✓[/]";
             string packageName = Markup.Escape(pkg.Id);
 
-            // Truncate package name if too long (max 28 chars to fit in column)
-            if (packageName.Length > 28)
-            {
-                packageName = packageName.Substring(0, 25) + "...";
-            }
+            // Truncate package name if too long (max 28 chars to fit in column) -- removed, let overflow
+            //if (packageName.Length > 28)
+            //{
+            //    packageName = packageName.Substring(0, 25) + "...";
+            //}
 
             string versionInfo;
             if (pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion))
