@@ -115,6 +115,37 @@ public static class InteractivePackageDetailsBuilder
     {
         var builder = Controls.Markup();
 
+        // Verification and warning badges
+        var badges = new List<string>();
+        if (nugetData.IsVerified)
+        {
+            badges.Add("[green]✓ Verified[/]");
+        }
+        if (nugetData.VulnerabilityCount > 0)
+        {
+            badges.Add($"[red]⚠ {nugetData.VulnerabilityCount} Vulnerabilities[/]");
+        }
+        if (badges.Any())
+        {
+            builder.AddLine(string.Join(" ", badges));
+            builder.AddEmptyLine();
+        }
+
+        // Deprecation warning
+        if (nugetData.IsDeprecated)
+        {
+            builder.AddLine($"[red bold]⚠ DEPRECATED[/]");
+            if (!string.IsNullOrEmpty(nugetData.DeprecationMessage))
+            {
+                builder.AddLine($"[yellow]{Markup.Escape(nugetData.DeprecationMessage)}[/]");
+            }
+            if (!string.IsNullOrEmpty(nugetData.AlternatePackageId))
+            {
+                builder.AddLine($"[grey70]Alternative: {Markup.Escape(nugetData.AlternatePackageId)}[/]");
+            }
+            builder.AddEmptyLine();
+        }
+
         if (!string.IsNullOrEmpty(nugetData.Description))
         {
             builder.AddLine($"[grey70 bold]Description:[/]");
@@ -122,9 +153,36 @@ public static class InteractivePackageDetailsBuilder
             builder.AddEmptyLine();
         }
 
+        if (nugetData.Authors.Any())
+        {
+            var authors = string.Join(", ", nugetData.Authors);
+            builder.AddLine($"[grey70]Authors: {Markup.Escape(authors)}[/]");
+        }
+
+        // License - prefer expression over URL
+        if (!string.IsNullOrEmpty(nugetData.LicenseExpression))
+        {
+            builder.AddLine($"[grey70]License: {Markup.Escape(nugetData.LicenseExpression)}[/]");
+        }
+        else if (!string.IsNullOrEmpty(nugetData.LicenseUrl))
+        {
+            builder.AddLine($"[grey70]License: {Markup.Escape(nugetData.LicenseUrl)}[/]");
+        }
+
+        if (nugetData.Tags.Any())
+        {
+            var tags = string.Join(", ", nugetData.Tags);
+            builder.AddLine($"[grey70]Tags: {Markup.Escape(tags)}[/]");
+        }
+
         if (nugetData.TotalDownloads > 0)
         {
             builder.AddLine($"[grey70]Downloads: {FormatDownloads(nugetData.TotalDownloads)}[/]");
+        }
+
+        if (nugetData.PackageSize.HasValue)
+        {
+            builder.AddLine($"[grey70]Package Size: {FormatSize(nugetData.PackageSize.Value)}[/]");
         }
 
         if (nugetData.Published.HasValue)
@@ -132,9 +190,34 @@ public static class InteractivePackageDetailsBuilder
             builder.AddLine($"[grey70]Published: {nugetData.Published.Value:yyyy-MM-dd}[/]");
         }
 
+        if (nugetData.TargetFrameworks.Any())
+        {
+            var frameworks = string.Join(", ", nugetData.TargetFrameworks);
+            builder.AddLine($"[grey70]Target Frameworks: {Markup.Escape(frameworks)}[/]");
+        }
+
         if (!string.IsNullOrEmpty(nugetData.ProjectUrl))
         {
             builder.AddLine($"[grey70]Project URL: {Markup.Escape(nugetData.ProjectUrl)}[/]");
+        }
+
+        if (!string.IsNullOrEmpty(nugetData.RepositoryUrl))
+        {
+            builder.AddLine($"[grey70]Repository: {Markup.Escape(nugetData.RepositoryUrl)}[/]");
+        }
+
+        // Release notes
+        if (!string.IsNullOrEmpty(nugetData.ReleaseNotes))
+        {
+            builder.AddEmptyLine();
+            builder.AddLine($"[grey70 bold]Release Notes:[/]");
+            // Truncate release notes if too long
+            var notes = nugetData.ReleaseNotes;
+            if (notes.Length > 300)
+            {
+                notes = notes.Substring(0, 297) + "...";
+            }
+            builder.AddLine($"[grey70]{Markup.Escape(notes)}[/]");
         }
 
         if (nugetData.Versions.Any())
@@ -221,6 +304,17 @@ public static class InteractivePackageDetailsBuilder
         if (downloads >= 1_000)
             return $"{downloads / 1_000.0:F1}K";
         return downloads.ToString();
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes >= 1_073_741_824)
+            return $"{bytes / 1_073_741_824.0:F2} GB";
+        if (bytes >= 1_048_576)
+            return $"{bytes / 1_048_576.0:F2} MB";
+        if (bytes >= 1_024)
+            return $"{bytes / 1_024.0:F2} KB";
+        return $"{bytes} bytes";
     }
 
 }

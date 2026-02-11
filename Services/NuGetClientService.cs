@@ -48,9 +48,17 @@ public class NuGetClientService : IDisposable
                 Description = d.Description ?? string.Empty,
                 TotalDownloads = d.TotalDownloads,
                 ProjectUrl = d.ProjectUrl,
+                LicenseUrl = d.LicenseUrl,
+                LicenseExpression = d.LicenseExpression,
+                RepositoryUrl = d.RepositoryUrl,
                 Authors = d.Authors ?? new List<string>(),
                 Tags = d.Tags ?? new List<string>(),
-                Versions = d.Versions?.Select(v => v.Version ?? string.Empty).ToList() ?? new List<string>()
+                Versions = d.Versions?.Select(v => v.Version ?? string.Empty).ToList() ?? new List<string>(),
+                IsVerified = d.Verified,
+                VulnerabilityCount = d.Vulnerabilities?.Count ?? 0,
+                IsDeprecated = d.Deprecation != null,
+                DeprecationMessage = d.Deprecation?.Message,
+                AlternatePackageId = d.Deprecation?.AlternatePackage?.Id
             }).ToList();
         }
         catch (Exception ex)
@@ -105,17 +113,30 @@ public class NuGetClientService : IDisposable
                     .ToList() ?? new List<string>();
             }
 
-            return new NuGetPackage
+            var package = new NuGetPackage
             {
                 Id = data.Id ?? packageId,
                 Version = data.Version ?? string.Empty,
                 Description = data.Description ?? string.Empty,
                 ProjectUrl = data.ProjectUrl,
+                LicenseUrl = data.LicenseUrl,
+                LicenseExpression = data.LicenseExpression,
+                RepositoryUrl = data.RepositoryUrl,
                 Authors = data.Authors ?? new List<string>(),
                 Tags = data.Tags ?? new List<string>(),
                 TotalDownloads = data.TotalDownloads,
-                Versions = allVersions
+                Versions = allVersions,
+                IsVerified = data.Verified,
+                VulnerabilityCount = data.Vulnerabilities?.Count ?? 0,
+                IsDeprecated = data.Deprecation != null,
+                DeprecationMessage = data.Deprecation?.Message,
+                AlternatePackageId = data.Deprecation?.AlternatePackage?.Id
             };
+
+            // Fetch additional details from registration API (catalog entry)
+            await EnrichPackageWithCatalogDataAsync(package, cancellationToken);
+
+            return package;
         }
         catch (Exception ex)
         {
@@ -176,6 +197,52 @@ public class NuGetClientService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Enriches a package with additional metadata from the registration/catalog API
+    /// </summary>
+    private async Task EnrichPackageWithCatalogDataAsync(NuGetPackage package, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Fetch latest version's catalog entry from registration API
+            var registrationUrl = $"{RegistrationBaseUrl}/{package.Id.ToLowerInvariant()}/index.json";
+            var registrationResponse = await _httpClient.GetFromJsonAsync<NuGetRegistrationResponse>(registrationUrl, cancellationToken);
+
+            if (registrationResponse?.Items == null || !registrationResponse.Items.Any())
+                return;
+
+            // Get the latest version's catalog entry
+            var latestPage = registrationResponse.Items.LastOrDefault();
+            if (latestPage?.Items == null || !latestPage.Items.Any())
+                return;
+
+            var latestCatalogItem = latestPage.Items.LastOrDefault();
+            var catalogEntry = latestCatalogItem?.CatalogEntry;
+
+            if (catalogEntry == null)
+                return;
+
+            // Enrich with catalog data
+            package.PackageSize = catalogEntry.PackageSize;
+            package.ReleaseNotes = catalogEntry.ReleaseNotes;
+
+            // Extract target frameworks from dependency groups
+            if (catalogEntry.DependencyGroups != null && catalogEntry.DependencyGroups.Any())
+            {
+                package.TargetFrameworks = catalogEntry.DependencyGroups
+                    .Where(g => !string.IsNullOrEmpty(g.TargetFramework))
+                    .Select(g => g.TargetFramework!)
+                    .Distinct()
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't fail the entire request if catalog enrichment fails
+            _logService?.LogWarning($"Could not enrich package with catalog data: {ex.Message}", "NuGet");
+        }
+    }
+
     public void Dispose()
     {
         _httpClient?.Dispose();
@@ -206,6 +273,15 @@ internal class NuGetSearchData
     [JsonPropertyName("projectUrl")]
     public string? ProjectUrl { get; set; }
 
+    [JsonPropertyName("licenseUrl")]
+    public string? LicenseUrl { get; set; }
+
+    [JsonPropertyName("licenseExpression")]
+    public string? LicenseExpression { get; set; }
+
+    [JsonPropertyName("repositoryUrl")]
+    public string? RepositoryUrl { get; set; }
+
     [JsonPropertyName("authors")]
     public List<string>? Authors { get; set; }
 
@@ -214,6 +290,54 @@ internal class NuGetSearchData
 
     [JsonPropertyName("versions")]
     public List<NuGetVersionData>? Versions { get; set; }
+
+    [JsonPropertyName("verified")]
+    public bool Verified { get; set; }
+
+    [JsonPropertyName("packageTypes")]
+    public List<NuGetPackageType>? PackageTypes { get; set; }
+
+    [JsonPropertyName("vulnerabilities")]
+    public List<NuGetVulnerability>? Vulnerabilities { get; set; }
+
+    [JsonPropertyName("deprecation")]
+    public NuGetDeprecation? Deprecation { get; set; }
+}
+
+internal class NuGetPackageType
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+}
+
+internal class NuGetVulnerability
+{
+    [JsonPropertyName("advisoryUrl")]
+    public string? AdvisoryUrl { get; set; }
+
+    [JsonPropertyName("severity")]
+    public string? Severity { get; set; }
+}
+
+internal class NuGetDeprecation
+{
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("reasons")]
+    public List<string>? Reasons { get; set; }
+
+    [JsonPropertyName("alternatePackage")]
+    public NuGetAlternatePackage? AlternatePackage { get; set; }
+}
+
+internal class NuGetAlternatePackage
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("range")]
+    public string? Range { get; set; }
 }
 
 internal class NuGetVersionData
@@ -265,6 +389,33 @@ internal class NuGetCatalogEntry
 
     [JsonPropertyName("published")]
     public DateTime? Published { get; set; }
+
+    [JsonPropertyName("packageSize")]
+    public long? PackageSize { get; set; }
+
+    [JsonPropertyName("releaseNotes")]
+    public string? ReleaseNotes { get; set; }
+
+    [JsonPropertyName("dependencyGroups")]
+    public List<NuGetDependencyGroup>? DependencyGroups { get; set; }
+}
+
+internal class NuGetDependencyGroup
+{
+    [JsonPropertyName("targetFramework")]
+    public string? TargetFramework { get; set; }
+
+    [JsonPropertyName("dependencies")]
+    public List<NuGetDependency>? Dependencies { get; set; }
+}
+
+internal class NuGetDependency
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("range")]
+    public string? Range { get; set; }
 }
 
 internal class FlatContainerResponse
