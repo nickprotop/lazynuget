@@ -2,23 +2,24 @@
   <!-- Background -->
   <rect width="600" height="120" fill="#1e1e1e"/>
 
-  <!-- Package Box Icon -->
-  <g transform="translate(30, 25)">
-    <!-- Box outline -->
-    <rect x="0" y="15" width="60" height="60" fill="none" stroke="#00d9ff" stroke-width="2.5"/>
-    <!-- Box top -->
-    <polygon points="0,15 30,0 60,15" fill="none" stroke="#00d9ff" stroke-width="2.5"/>
-    <!-- Box center line -->
-    <line x1="30" y1="0" x2="30" y2="75" stroke="#00d9ff" stroke-width="2.5"/>
-    <!-- Ribbon horizontal -->
-    <line x1="0" y1="45" x2="60" y2="45" stroke="#f59e0b" stroke-width="3"/>
-    <!-- Ribbon vertical -->
-    <line x1="30" y1="15" x2="30" y2="75" stroke="#f59e0b" stroke-width="3"/>
-  </g>
+  <!-- Terminal window border -->
+  <rect x="20" y="15" width="560" height="90" fill="#0d1117" stroke="#30363d" stroke-width="2" rx="6"/>
 
-  <!-- Text: LazyNuGet -->
-  <text x="120" y="70" font-family="monospace" font-size="42" font-weight="bold" fill="#00d9ff">LazyNuGet</text>
+  <!-- Terminal header dots -->
+  <circle cx="40" cy="35" r="5" fill="#ff5f56"/>
+  <circle cx="60" cy="35" r="5" fill="#ffbd2e"/>
+  <circle cx="80" cy="35" r="5" fill="#27c93f"/>
 
-  <!-- Tagline -->
-  <text x="120" y="95" font-family="monospace" font-size="16" fill="#94a3b8">Terminal NuGet package manager</text>
+  <!-- Terminal prompt -->
+  <text x="40" y="75" font-family="'Courier New', monospace" font-size="32" font-weight="bold" fill="#00d9ff">
+    $ LazyNuGet
+  </text>
+
+  <!-- Cursor blink -->
+  <rect x="285" y="52" width="16" height="28" fill="#00d9ff" opacity="0.8"/>
+
+  <!-- Tagline in terminal style -->
+  <text x="320" y="75" font-family="'Courier New', monospace" font-size="18" fill="#6e7681">
+    # NuGet TUI
+  </text>
 </svg>
