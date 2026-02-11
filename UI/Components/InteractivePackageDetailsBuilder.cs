@@ -45,7 +45,7 @@ public static class InteractivePackageDetailsBuilder
         var toolbarTop = Controls.Markup()
             .AddEmptyLine()
             .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithBackgroundColor(Color.Grey15)
             .WithMargin(1, 0, 1, 0)
             .Build();
         controls.Add(toolbarTop);
@@ -58,7 +58,7 @@ public static class InteractivePackageDetailsBuilder
         var toolbarBottom = Controls.Markup()
             .AddEmptyLine()
             .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithBackgroundColor(Color.Grey15)
             .WithMargin(1, 0, 1, 0)
             .Build();
         controls.Add(toolbarBottom);
@@ -167,21 +167,39 @@ public static class InteractivePackageDetailsBuilder
         bool hasVersions = nugetData?.Versions.Any() == true;
 
         // Update button
-        var updateBtn = Controls.Button(package.IsOutdated ? "[grey93]Update[/] [grey50](Ctrl+U)[/]" : "[grey50]Up to Date[/]")
+        var updateBtn = Controls.Button(package.IsOutdated ? "[cyan1]Update[/] [grey78](Ctrl+U)[/]" : "[grey50]Up to Date[/]")
             .OnClick((s, e) => onUpdate())
             .Enabled(package.IsOutdated)
             .WithMargin(1, 0, 0, 0)
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .WithDisabledBackgroundColor(Color.Grey23)
+            .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
         // Change Version button
-        var versionBtn = Controls.Button("[grey93]Version[/] [grey50](Ctrl+V)[/]")
+        var versionBtn = Controls.Button("[cyan1]Version[/] [grey78](Ctrl+V)[/]")
             .OnClick((s, e) => onChangeVersion())
             .Enabled(hasVersions)
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .WithDisabledBackgroundColor(Color.Grey23)
+            .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
         // Remove button
-        var removeBtn = Controls.Button("[grey93]Remove[/] [grey50](Ctrl+X)[/]")
+        var removeBtn = Controls.Button("[cyan1]Remove[/] [grey78](Ctrl+X)[/]")
             .OnClick((s, e) => onRemove())
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .WithDisabledBackgroundColor(Color.Grey23)
+            .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
         return Controls.Toolbar()
@@ -189,7 +207,7 @@ public static class InteractivePackageDetailsBuilder
             .AddButton(versionBtn)
             .AddButton(removeBtn)
             .WithSpacing(2)
-            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithBackgroundColor(Color.Grey15)
             .WithMargin(1, 0, 1, 0)
             .Build();
     }

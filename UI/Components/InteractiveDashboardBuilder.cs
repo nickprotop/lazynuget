@@ -33,13 +33,9 @@ public static class InteractiveDashboardBuilder
             .Build();
         controls.Add(header);
 
-        // Stats cards
+        // Stats cards (first table)
         var statsCard = BuildStatsCard(project, outdatedPackages);
         controls.Add(statsCard);
-
-        // Package summary
-        var summary = BuildPackageSummary(project, outdatedPackages);
-        controls.Add(summary);
 
         // Separator before toolbar
         var separator = Controls.Rule("[grey70]Quick Actions[/]");
@@ -50,7 +46,7 @@ public static class InteractiveDashboardBuilder
         var toolbarTop = Controls.Markup()
             .AddEmptyLine()
             .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithBackgroundColor(Color.Grey15)
             .WithMargin(1, 0, 1, 0)
             .Build();
         controls.Add(toolbarTop);
@@ -63,7 +59,7 @@ public static class InteractiveDashboardBuilder
         var toolbarBottom = Controls.Markup()
             .AddEmptyLine()
             .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithBackgroundColor(Color.Grey15)
             .WithMargin(1, 0, 1, 0)
             .Build();
         controls.Add(toolbarBottom);
@@ -72,6 +68,10 @@ public static class InteractiveDashboardBuilder
         var separatorAfter = Controls.Rule();
         separatorAfter.Margin = new Margin(1, 0, 1, 0);
         controls.Add(separatorAfter);
+
+        // Package summary table
+        var summary = BuildPackageSummary(project, outdatedPackages);
+        controls.Add(summary);
 
         return controls;
     }
@@ -118,7 +118,7 @@ public static class InteractiveDashboardBuilder
             .ShowHeader()
             .WithHeaderColors(Color.Grey70, Color.Black)
             .WithBackgroundColor(null)
-            .WithMargin(1, 0, 0, 0)
+            .WithMargin(1, 1, 0, 0)
             .WithHorizontalAlignment(HorizontalAlignment.Left);
 
         // Add package rows
@@ -156,20 +156,38 @@ public static class InteractiveDashboardBuilder
         Action onRestore)
     {
         // View Packages button
-        var viewBtn = Controls.Button("[grey93]View Packages[/] [grey50](Enter)[/]")
+        var viewBtn = Controls.Button("[cyan1]View Packages[/] [grey78](Enter)[/]")
             .OnClick((s, e) => onViewPackages())
             .WithMargin(1, 0, 0, 0)
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .WithDisabledBackgroundColor(Color.Grey23)
+            .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
         // Update All button
-        var updateBtn = Controls.Button(outdatedPackages.Any() ? "[grey93]Update All[/] [grey50](Ctrl+U)[/]" : "[grey50]All Up-to-Date[/]")
+        var updateBtn = Controls.Button(outdatedPackages.Any() ? "[cyan1]Update All[/] [grey78](Ctrl+U)[/]" : "[grey50]All Up-to-Date[/]")
             .OnClick((s, e) => onUpdateAll())
             .Enabled(outdatedPackages.Any())
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .WithDisabledBackgroundColor(Color.Grey23)
+            .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
         // Restore button
-        var restoreBtn = Controls.Button("[grey93]Restore[/] [grey50](Ctrl+R)[/]")
+        var restoreBtn = Controls.Button("[cyan1]Restore[/] [grey78](Ctrl+R)[/]")
             .OnClick((s, e) => onRestore())
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .WithDisabledBackgroundColor(Color.Grey23)
+            .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
         return Controls.Toolbar()
@@ -177,7 +195,7 @@ public static class InteractiveDashboardBuilder
             .AddButton(updateBtn)
             .AddButton(restoreBtn)
             .WithSpacing(2)
-            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithBackgroundColor(Color.Grey15)
             .WithMargin(1, 0, 1, 0)
             .Build();
     }

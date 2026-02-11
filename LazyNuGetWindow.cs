@@ -51,6 +51,7 @@ public class LazyNuGetWindow : IDisposable
     private NuGetClientService? _nugetService;
     private DotNetCliService? _cliService;
     private ConfigurationService? _configService;
+    private OperationHistoryService? _historyService;
 
     public LazyNuGetWindow(ConsoleWindowSystem windowSystem, string folderPath, ConfigurationService? configService = null)
     {
@@ -63,6 +64,13 @@ public class LazyNuGetWindow : IDisposable
         _parserService = new ProjectParserService(_windowSystem.LogService);
         _nugetService = new NuGetClientService(_windowSystem.LogService);
         _cliService = new DotNetCliService(_windowSystem.LogService);
+
+        // Initialize operation history service
+        var configDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "LazyNuGet");
+        Directory.CreateDirectory(configDir);
+        _historyService = new OperationHistoryService(configDir);
 
         BuildUI();
         SetupEventHandlers();
@@ -251,64 +259,61 @@ public class LazyNuGetWindow : IDisposable
 
         _window.KeyPressed += (sender, e) =>
         {
-            // Helper: check if any control in details panel has focus (using FocusStateService)
-            bool DetailsHasFocus()
+            // Up/Down arrows: Navigate list only when list is NOT focused
+            // If list is focused, let it handle arrows itself
+            if (e.KeyInfo.Key == ConsoleKey.UpArrow && _contextList != null && _contextList.Items.Count > 0)
             {
-                var focused = _windowSystem.FocusStateService.FocusedControl;
-                if (focused == null) return false;
-                if (focused == _detailsPanel) return true;
-                // Check if focused control's container is the details panel
-                if (focused is IWindowControl windowControl)
+                // Check if list control is focused - if yes, let it handle the key
+                if (_windowSystem.FocusStateService.FocusedControl == _contextList)
                 {
-                    return windowControl.Container == _detailsPanel;
+                    return; // List will handle it
                 }
-                return false;
-            }
 
-            // Up/Down arrows: Navigate list WITHOUT changing focus (convenience feature)
-            // Only intercept if:
-            // 1. Event not already handled (let focused controls process first)
-            // 2. Details panel doesn't have focus (let it handle its own arrows)
-            if (!e.Handled && e.KeyInfo.Key == ConsoleKey.UpArrow && _contextList != null
-                && !DetailsHasFocus() && _contextList.Items.Count > 0)
-            {
+                // List not focused - we handle it (global navigation)
                 if (_contextList.SelectedIndex > 0)
                     _contextList.SelectedIndex--;
                 e.Handled = true;
                 return;
             }
-            if (!e.Handled && e.KeyInfo.Key == ConsoleKey.DownArrow && _contextList != null
-                && !DetailsHasFocus() && _contextList.Items.Count > 0)
+            if (e.KeyInfo.Key == ConsoleKey.DownArrow && _contextList != null && _contextList.Items.Count > 0)
             {
+                // Check if list control is focused - if yes, let it handle the key
+                if (_windowSystem.FocusStateService.FocusedControl == _contextList)
+                {
+                    return; // List will handle it
+                }
+
+                // List not focused - we handle it (global navigation)
                 if (_contextList.SelectedIndex < _contextList.Items.Count - 1)
                     _contextList.SelectedIndex++;
                 e.Handled = true;
                 return;
             }
 
-            // Left/Right arrows: Switch focus BETWEEN panels (panel navigation)
-            // Must also be before AlreadyHandled for the same reason as Up/Down.
-            if (e.KeyInfo.Key == ConsoleKey.LeftArrow)
+            // === PAGE UP/DOWN FOR RIGHT PANEL SCROLLING ===
+            // Page Up/Down: Scroll right panel content when it overflows
+            if (e.KeyInfo.Key == ConsoleKey.PageUp)
             {
-                var focused = _windowSystem.FocusStateService.FocusedControl;
-                if (focused != _contextList)
+                if (_detailsPanel != null && _detailsPanel.CanScrollUp)
                 {
-                    _contextList?.SetFocus(true, FocusReason.Keyboard);
-                    // Indicator update is automatic via StateChanged event
-                    e.Handled = true;
-                    return;
+                    _detailsPanel.ScrollVerticalBy(-10);  // Scroll up 10 lines
                 }
+                e.Handled = true;
+                return;
             }
-            if (e.KeyInfo.Key == ConsoleKey.RightArrow)
+            if (e.KeyInfo.Key == ConsoleKey.PageDown)
             {
-                if (!DetailsHasFocus())
+                if (_detailsPanel != null && _detailsPanel.CanScrollDown)
                 {
-                    _detailsPanel?.SetFocus(true, FocusReason.Keyboard);
-                    // Indicator update is automatic via StateChanged event
-                    e.Handled = true;
-                    return;
+                    _detailsPanel.ScrollVerticalBy(10);  // Scroll down 10 lines
                 }
+                e.Handled = true;
+                return;
             }
+
+            // Note: Left/Right arrows and Tab are NOT intercepted - they work naturally
+            // Tab cycles through all focusable elements (panels, buttons, controls)
+            // Left/Right can be used by controls as needed
 
             // Escape must run BEFORE AlreadyHandled check — the dispatcher
             // consumes the first Escape to unfocus controls, setting AlreadyHandled.
@@ -320,12 +325,14 @@ public class LazyNuGetWindow : IDisposable
                 return;
             }
 
-            // Enter must also run BEFORE AlreadyHandled — we want Enter to ALWAYS
-            // navigate forward (e.g., Projects → Packages view), regardless of
-            // whether the list control handles it first.
+            // Enter: Navigate forward ONLY if not already handled by a control (e.g., button)
+            // If a button has focus and handles Enter, don't also trigger navigation
             if (e.KeyInfo.Key == ConsoleKey.Enter)
             {
-                HandleEnterKey();
+                if (!e.AlreadyHandled)
+                {
+                    HandleEnterKey();
+                }
                 e.Handled = true;
                 return;
             }
@@ -348,6 +355,12 @@ public class LazyNuGetWindow : IDisposable
             else if (e.KeyInfo.Key == ConsoleKey.R && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
                 _ = LoadProjectsAsync();
+                e.Handled = true;
+            }
+            // Ctrl+H - Operation history
+            else if (e.KeyInfo.Key == ConsoleKey.H && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                _ = ShowOperationHistoryAsync();
                 e.Handled = true;
             }
             // Ctrl+U - Update package (in packages view) or update all (in projects view)
@@ -846,6 +859,19 @@ public class LazyNuGetWindow : IDisposable
         SwitchToSearchResultsView(selectedPackage);
     }
 
+    private async Task ShowOperationHistoryAsync()
+    {
+        if (_cliService == null || _historyService == null) return;
+
+        await OperationHistoryModal.ShowAsync(_windowSystem, _historyService, _cliService, _window);
+
+        // Refresh current view after history modal closes (in case user retried operations)
+        if (_selectedProject != null)
+        {
+            await ReloadProjectAsync(_selectedProject);
+        }
+    }
+
     private void SwitchToSearchResultsView(NuGetPackage selectedPackage)
     {
         _currentViewState = ViewState.Search;
@@ -953,29 +979,26 @@ public class LazyNuGetWindow : IDisposable
             if (!confirm) return;
         }
 
-        var notifId = _windowSystem.NotificationStateService.ShowNotification(
-            "Installing Package", $"Adding {Markup.Escape(package.Id)} to {Markup.Escape(targetProject.Name)}...",
-            NotificationSeverity.Info, timeout: 0, parentWindow: _window);
+        // Show install progress modal with cancellation support
+        var result = await OperationProgressModal.ShowAsync(
+            _windowSystem,
+            OperationType.Add,
+            (ct, progress) => _cliService.AddPackageAsync(
+                targetProject.FilePath, package.Id, package.Version, ct, progress),
+            "Installing Package",
+            $"Adding {package.Id} {package.Version} to {targetProject.Name}",
+            _historyService,
+            targetProject.FilePath,
+            targetProject.Name,
+            package.Id,
+            package.Version,
+            _window);
 
-        var result = await _cliService.AddPackageAsync(targetProject.FilePath, package.Id, package.Version);
-
-        _windowSystem.NotificationStateService.DismissNotification(notifId);
-
+        // Refresh project after successful installation
         if (result.Success)
         {
             await ReloadProjectAsync(targetProject);
             SwitchToProjectsView();
-            _windowSystem.NotificationStateService.ShowNotification(
-                "Package Installed",
-                $"{package.Id} {package.Version} added to {targetProject.Name}",
-                NotificationSeverity.Success,
-                timeout: 3000,
-                parentWindow: _window);
-        }
-        else
-        {
-            await ErrorModal.ShowAsync(_windowSystem, "Install Failed",
-                $"Failed to install {package.Id}.", result.ErrorDetails, _window);
         }
     }
 
@@ -990,29 +1013,25 @@ public class LazyNuGetWindow : IDisposable
             parentWindow: _window);
         if (!confirm) return;
 
-        var notifId = _windowSystem.NotificationStateService.ShowNotification(
-            "Updating Package", $"Updating {Markup.Escape(package.Id)} to {package.LatestVersion}...",
-            NotificationSeverity.Info, timeout: 0, parentWindow: _window);
+        // Show update progress modal with cancellation support
+        var result = await OperationProgressModal.ShowAsync(
+            _windowSystem,
+            OperationType.Update,
+            (ct, progress) => _cliService.UpdatePackageAsync(
+                _selectedProject.FilePath, package.Id, package.LatestVersion, ct, progress),
+            "Updating Package",
+            $"Updating {package.Id} to {package.LatestVersion}",
+            _historyService,
+            _selectedProject.FilePath,
+            _selectedProject.Name,
+            package.Id,
+            package.LatestVersion,
+            _window);
 
-        var result = await _cliService.UpdatePackageAsync(
-            _selectedProject.FilePath, package.Id, package.LatestVersion);
-
-        _windowSystem.NotificationStateService.DismissNotification(notifId);
-
+        // Refresh project after successful update
         if (result.Success)
         {
             await ReloadProjectAndRefreshView(_selectedProject);
-            _windowSystem.NotificationStateService.ShowNotification(
-                "Package Updated",
-                $"{package.Id} updated to {package.LatestVersion}",
-                NotificationSeverity.Success,
-                timeout: 3000,
-                parentWindow: _window);
-        }
-        else
-        {
-            await ErrorModal.ShowAsync(_windowSystem, "Update Failed",
-                $"Failed to update {package.Id}.", result.ErrorDetails, _window);
         }
     }
 
@@ -1026,28 +1045,25 @@ public class LazyNuGetWindow : IDisposable
             parentWindow: _window);
         if (!confirm) return;
 
-        var notifId = _windowSystem.NotificationStateService.ShowNotification(
-            "Removing Package", $"Removing {Markup.Escape(package.Id)}...",
-            NotificationSeverity.Info, timeout: 0, parentWindow: _window);
+        // Show remove progress modal with cancellation support
+        var result = await OperationProgressModal.ShowAsync(
+            _windowSystem,
+            OperationType.Remove,
+            (ct, progress) => _cliService.RemovePackageAsync(
+                _selectedProject.FilePath, package.Id, ct, progress),
+            "Removing Package",
+            $"Removing {package.Id} from {_selectedProject.Name}",
+            _historyService,
+            _selectedProject.FilePath,
+            _selectedProject.Name,
+            package.Id,
+            null,
+            _window);
 
-        var result = await _cliService.RemovePackageAsync(_selectedProject.FilePath, package.Id);
-
-        _windowSystem.NotificationStateService.DismissNotification(notifId);
-
+        // Refresh project after successful removal
         if (result.Success)
         {
             await ReloadProjectAndRefreshView(_selectedProject);
-            _windowSystem.NotificationStateService.ShowNotification(
-                "Package Removed",
-                $"{package.Id} removed from {_selectedProject.Name}",
-                NotificationSeverity.Success,
-                timeout: 3000,
-                parentWindow: _window);
-        }
-        else
-        {
-            await ErrorModal.ShowAsync(_windowSystem, "Remove Failed",
-                $"Failed to remove {package.Id}.", result.ErrorDetails, _window);
         }
     }
 
@@ -1098,30 +1114,24 @@ public class LazyNuGetWindow : IDisposable
                 parentWindow: _window);
             if (!confirm) return;
 
-            var notifId = _windowSystem.NotificationStateService.ShowNotification(
-                "Changing Version", $"Installing {Markup.Escape(package.Id)} {selectedVersion}...",
-                NotificationSeverity.Info, timeout: 0, parentWindow: _window);
-
-            // Use AddPackageAsync which will update the version if package already exists
-            var result = await _cliService.AddPackageAsync(
-                _selectedProject.FilePath, package.Id, selectedVersion);
-
-            _windowSystem.NotificationStateService.DismissNotification(notifId);
+            // Use OperationProgressModal for progress feedback and history recording
+            var result = await OperationProgressModal.ShowAsync(
+                _windowSystem,
+                OperationType.Update,  // Changing version is an update operation
+                (ct, progress) => _cliService.AddPackageAsync(
+                    _selectedProject.FilePath, package.Id, selectedVersion, ct, progress),
+                "Changing Package Version",
+                $"Changing {package.Id} to version {selectedVersion}",
+                _historyService,
+                _selectedProject.FilePath,
+                _selectedProject.Name,
+                package.Id,
+                selectedVersion,
+                _window);
 
             if (result.Success)
             {
                 await ReloadProjectAndRefreshView(_selectedProject);
-                _windowSystem.NotificationStateService.ShowNotification(
-                    "Version Changed",
-                    $"{package.Id} changed to {selectedVersion}",
-                    NotificationSeverity.Success,
-                    timeout: 3000,
-                    parentWindow: _window);
-            }
-            else
-            {
-                await ErrorModal.ShowAsync(_windowSystem, "Version Change Failed",
-                    $"Failed to change {package.Id} to version {selectedVersion}.", result.ErrorDetails, _window);
             }
         }
         catch (Exception ex)
@@ -1136,7 +1146,7 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_cliService == null) return;
 
-        var outdated = project.Packages.Where(p => p.IsOutdated).ToList();
+        var outdated = project.Packages.Where(p => p.IsOutdated && !string.IsNullOrEmpty(p.LatestVersion)).ToList();
         if (!outdated.Any()) return;
 
         var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
@@ -1145,78 +1155,40 @@ public class LazyNuGetWindow : IDisposable
             parentWindow: _window);
         if (!confirm) return;
 
-        // Build a progress panel with a determinate progress bar
-        var progressLabel = Controls.Markup()
-            .AddLine($"[{ColorScheme.PrimaryMarkup}]Updating packages...[/]")
-            .AddLine($"[grey70]0/{outdated.Count} completed[/]")
-            .WithMargin(1, 1, 1, 0)
-            .Build();
+        // Build package list for batch update
+        var packages = outdated
+            .Select(p => (p.Id, p.LatestVersion!))
+            .ToList();
 
-        var progressBar = Controls.ProgressBar()
-            .WithMaxValue(outdated.Count)
-            .WithValue(0)
-            .ShowPercentage(true)
-            .WithMargin(1, 0, 1, 1)
-            .Build();
+        // Show progress modal for batch operation
+        var result = await OperationProgressModal.ShowAsync(
+            _windowSystem,
+            OperationType.Update,
+            (ct, progress) => _cliService.UpdateAllPackagesAsync(
+                project.FilePath, packages, ct, progress),
+            "Updating All Packages",
+            $"Updating {packages.Count} packages in {project.Name}",
+            _historyService,
+            project.FilePath,
+            project.Name,
+            null,  // No single package ID for batch operation
+            null,  // No single version for batch operation
+            _window);
 
-        UpdateDetailsPanel(new List<IWindowControl> { progressLabel, progressBar });
-
-        var failures = new List<string>();
-        for (int i = 0; i < outdated.Count; i++)
+        // Reload project after updates (even if partial success)
+        if (result.Success || result.Message?.Contains("Updated") == true)
         {
-            var pkg = outdated[i];
-            if (string.IsNullOrEmpty(pkg.LatestVersion)) continue;
+            await ReloadProjectAsync(project);
 
-            progressLabel.SetContent(new List<string>
+            // Refresh the current view
+            if (_currentViewState == ViewState.Projects)
             {
-                $"[{ColorScheme.PrimaryMarkup}]Updating packages...[/]",
-                $"[grey70]{i}/{outdated.Count} completed[/]",
-                $"[grey50]Current: {Markup.Escape(pkg.Id)}[/]"
-            });
-            progressBar.Value = i;
-
-            var result = await _cliService.UpdatePackageAsync(
-                project.FilePath, pkg.Id, pkg.LatestVersion);
-
-            if (!result.Success)
-            {
-                failures.Add($"{pkg.Id}: {result.ErrorDetails ?? result.Message}");
+                SwitchToProjectsView();
             }
-        }
-
-        progressLabel.SetContent(new List<string>
-        {
-            $"[{ColorScheme.PrimaryMarkup}]Updating packages...[/]",
-            $"[grey70]{outdated.Count}/{outdated.Count} completed[/]"
-        });
-        progressBar.Value = outdated.Count;
-
-        await ReloadProjectAsync(project);
-
-        if (failures.Any())
-        {
-            await ErrorModal.ShowAsync(_windowSystem, "Some Updates Failed",
-                $"{failures.Count} of {outdated.Count} updates failed.",
-                string.Join("\n\n", failures), _window);
-        }
-        else
-        {
-            _windowSystem.NotificationStateService.ShowNotification(
-                "All Packages Updated",
-                $"{outdated.Count} package(s) updated in {project.Name}",
-                NotificationSeverity.Success,
-                timeout: 3000,
-                parentWindow: _window);
-        }
-
-        // Refresh the current view
-        if (_currentViewState == ViewState.Projects)
-        {
-            SwitchToProjectsView();
-        }
-        else if (_currentViewState == ViewState.Packages)
-        {
-            SwitchToPackagesView(project);
+            else if (_currentViewState == ViewState.Packages)
+            {
+                SwitchToPackagesView(project);
+            }
         }
     }
 
@@ -1224,27 +1196,24 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_cliService == null) return;
 
-        var notifId = _windowSystem.NotificationStateService.ShowNotification(
-            "Restoring Packages", $"Restoring packages for {Markup.Escape(project.Name)}...",
-            NotificationSeverity.Info, timeout: 0, parentWindow: _window);
+        // Show restore progress modal with cancellation support
+        var result = await OperationProgressModal.ShowAsync(
+            _windowSystem,
+            OperationType.Restore,
+            (ct, progress) => _cliService.RestorePackagesAsync(project.FilePath, ct, progress),
+            "Restoring Packages",
+            $"Restoring packages for {project.Name}",
+            _historyService,
+            project.FilePath,
+            project.Name,
+            null,
+            null,
+            _window);
 
-        var result = await _cliService.RestorePackagesAsync(project.FilePath);
-
-        _windowSystem.NotificationStateService.DismissNotification(notifId);
-
-        if (result.Success)
+        // Refresh project after successful restore
+        if (result.Success && _selectedProject?.FilePath == project.FilePath)
         {
-            _windowSystem.NotificationStateService.ShowNotification(
-                "Packages Restored",
-                $"Packages restored for {project.Name}",
-                NotificationSeverity.Success,
-                timeout: 3000,
-                parentWindow: _window);
-        }
-        else
-        {
-            await ErrorModal.ShowAsync(_windowSystem, "Restore Failed",
-                $"Failed to restore packages for {project.Name}.", result.ErrorDetails, _window);
+            await ReloadProjectAsync(project);
         }
     }
 
@@ -1334,6 +1303,10 @@ public class LazyNuGetWindow : IDisposable
         _detailsContent = builder.WithMargin(1, 1, 1, 1).Build();
         _detailsPanel.AddControl(_detailsContent);
         _detailsPanel.ScrollToTop();
+
+        // Update header and help bar to reflect new content state
+        UpdateRightPanelHeader();
+        _bottomHelpBar?.SetContent(new List<string> { GetHelpText() });
     }
 
     private void UpdateDetailsPanel(List<IWindowControl> controls)
@@ -1352,15 +1325,47 @@ public class LazyNuGetWindow : IDisposable
         // Keep track of the first control as _detailsContent for backward compatibility
         _detailsContent = controls.FirstOrDefault() as MarkupControl;
         _detailsPanel.ScrollToTop();
+
+        // Update header and help bar to reflect new content state
+        UpdateRightPanelHeader();
+        _bottomHelpBar?.SetContent(new List<string> { GetHelpText() });
+    }
+
+    private bool IsRightPanelScrollable()
+    {
+        if (_detailsPanel == null) return false;
+
+        // Check if content overflows viewport - indicates scrolling is possible
+        return _detailsPanel.CanScrollDown || _detailsPanel.CanScrollUp;
+    }
+
+    private void UpdateRightPanelHeader()
+    {
+        if (_rightPanelHeader == null) return;
+
+        string title = _currentViewState == ViewState.Projects ? "Dashboard" : "Details";
+        bool scrollable = IsRightPanelScrollable();
+
+        if (scrollable)
+        {
+            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/] [grey50](PgUp/PgDn to scroll)[/]" });
+        }
+        else
+        {
+            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/]" });
+        }
     }
 
     private string GetHelpText()
     {
+        bool scrollable = IsRightPanelScrollable();
+        string scrollHint = scrollable ? "[cyan1]PgUp/PgDn[/][grey70]:Scroll  [/]" : "";
+
         return _currentViewState switch
         {
-            ViewState.Projects => "[grey50]←→[/][grey70]:Panel  [/][grey50]Enter[/][grey70]:View Packages  [/][grey50]Ctrl+S[/][grey70]:Search  [/][grey50]Ctrl+O[/][grey70]:Open Folder  [/][grey50]Ctrl+R[/][grey70]:Reload  [/][grey50]Ctrl+L[/][grey70]:Logs  [/][grey50]Esc[/][grey70]:Exit[/]",
-            ViewState.Packages => "[grey50]←→[/][grey70]:Panel  [/][grey50]Esc[/][grey70]:Back  [/][grey50]Ctrl+U[/][grey70]:Update  [/][grey50]Ctrl+X[/][grey70]:Remove  [/][grey50]Ctrl+S[/][grey70]:Search  [/][grey50]Ctrl+L[/][grey70]:Logs[/]",
-            ViewState.Search => "[grey50]←→[/][grey70]:Panel  [/][grey50]Esc[/][grey70]:Cancel  [/][grey50]Enter[/][grey70]:Install  [/][grey50]↑↓[/][grey70]:Navigate  [/][grey50]Ctrl+L[/][grey70]:Logs[/]",
+            ViewState.Projects => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+O[/][grey70]:Open  [/][cyan1]Ctrl+R[/][grey70]:Reload  [/][cyan1]Esc[/][grey70]:Exit[/]",
+            ViewState.Packages => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Esc[/][grey70]:Back  [/][cyan1]Ctrl+U[/][grey70]:Update  [/][cyan1]Ctrl+X[/][grey70]:Remove  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
+            ViewState.Search => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:Install  [/][cyan1]Esc[/][grey70]:Cancel  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
             _ => "[grey70]?:Help[/]"
         };
     }
