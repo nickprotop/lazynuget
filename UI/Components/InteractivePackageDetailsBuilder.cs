@@ -4,6 +4,7 @@ using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
 using Spectre.Console;
 using LazyNuGet.Models;
+using LazyNuGet.UI.Utilities;
 using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 
 namespace LazyNuGet.UI.Components;
@@ -17,6 +18,7 @@ public static class InteractivePackageDetailsBuilder
         PackageReference package,
         NuGetPackage? nugetData,
         Action onUpdate,
+        Action onChangeVersion,
         Action onRemove)
     {
         var controls = new List<IWindowControl>();
@@ -34,6 +36,38 @@ public static class InteractivePackageDetailsBuilder
         var status = BuildStatusSection(package);
         controls.Add(status);
 
+        // Separator before toolbar
+        var separator1 = Controls.Rule("[grey70]Package Actions[/]");
+        separator1.Margin = new Margin(1, 0, 1, 0);
+        controls.Add(separator1);
+
+        // Empty markup above toolbar for background extension
+        var toolbarTop = Controls.Markup()
+            .AddEmptyLine()
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithMargin(1, 0, 1, 0)
+            .Build();
+        controls.Add(toolbarTop);
+
+        // Action toolbar - placed after status, before details
+        var toolbar = BuildActionToolbar(package, nugetData, onUpdate, onChangeVersion, onRemove);
+        controls.Add(toolbar);
+
+        // Empty markup below toolbar for background extension
+        var toolbarBottom = Controls.Markup()
+            .AddEmptyLine()
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithMargin(1, 0, 1, 0)
+            .Build();
+        controls.Add(toolbarBottom);
+
+        // Separator after toolbar (always visible)
+        var separator2 = Controls.Rule();
+        separator2.Margin = new Margin(1, 0, 1, 1);
+        controls.Add(separator2);
+
         // NuGet.org data section
         if (nugetData != null)
         {
@@ -48,14 +82,6 @@ public static class InteractivePackageDetailsBuilder
                 .Build();
             controls.Add(loading);
         }
-
-        // Interactive Action Buttons - Title + Real buttons!
-        var actionTitle = BuildActionButtons(package, onUpdate, onRemove);
-        controls.Add(actionTitle);
-
-        // Add actual button controls
-        var buttons = GetActionButtons(package, onUpdate, onRemove);
-        controls.AddRange(buttons);
 
         return controls;
     }
@@ -92,7 +118,7 @@ public static class InteractivePackageDetailsBuilder
         if (!string.IsNullOrEmpty(nugetData.Description))
         {
             builder.AddLine($"[grey70 bold]Description:[/]");
-            builder.AddLine($"[grey70]{Markup.Escape(WrapText(nugetData.Description, 50))}[/]");
+            builder.AddLine($"[grey70]{Markup.Escape(nugetData.Description)}[/]");
             builder.AddEmptyLine();
         }
 
@@ -131,43 +157,41 @@ public static class InteractivePackageDetailsBuilder
         return builder.WithMargin(1, 0, 0, 0).Build();
     }
 
-    private static IWindowControl BuildActionButtons(
+    private static IWindowControl BuildActionToolbar(
         PackageReference package,
+        NuGetPackage? nugetData,
         Action onUpdate,
+        Action onChangeVersion,
         Action onRemove)
     {
-        // Title
-        return Controls.Markup()
-            .AddLine("[cyan1 bold]Actions:[/]")
-            .AddLine("")
-            .AddLine("[grey70]Click buttons or use keyboard shortcuts:[/]")
-            .WithMargin(1, 0, 0, 1)
-            .Build();
-    }
-
-    public static List<IWindowControl> GetActionButtons(
-        PackageReference package,
-        Action onUpdate,
-        Action onRemove)
-    {
-        var buttons = new List<IWindowControl>();
+        bool hasVersions = nugetData?.Versions.Any() == true;
 
         // Update button
-        buttons.Add(Controls.Button(package.IsOutdated ? "⚡ Update to Latest (Ctrl+U)" : "✓ Up to Date")
-            .WithAlignment(HorizontalAlignment.Left)
-            .WithMargin(1, 0, 0, 0)
+        var updateBtn = Controls.Button(package.IsOutdated ? "[grey93]Update[/] [grey50](Ctrl+U)[/]" : "[grey50]Up to Date[/]")
             .OnClick((s, e) => onUpdate())
             .Enabled(package.IsOutdated)
-            .Build());
+            .WithMargin(1, 0, 0, 0)
+            .Build();
+
+        // Change Version button
+        var versionBtn = Controls.Button("[grey93]Version[/] [grey50](Ctrl+V)[/]")
+            .OnClick((s, e) => onChangeVersion())
+            .Enabled(hasVersions)
+            .Build();
 
         // Remove button
-        buttons.Add(Controls.Button("✕ Remove Package (Ctrl+X)")
-            .WithAlignment(HorizontalAlignment.Left)
-            .WithMargin(1, 0, 0, 1)
+        var removeBtn = Controls.Button("[grey93]Remove[/] [grey50](Ctrl+X)[/]")
             .OnClick((s, e) => onRemove())
-            .Build());
+            .Build();
 
-        return buttons;
+        return Controls.Toolbar()
+            .AddButton(updateBtn)
+            .AddButton(versionBtn)
+            .AddButton(removeBtn)
+            .WithSpacing(2)
+            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithMargin(1, 0, 1, 0)
+            .Build();
     }
 
     private static string FormatDownloads(long downloads)
@@ -181,10 +205,4 @@ public static class InteractivePackageDetailsBuilder
         return downloads.ToString();
     }
 
-    private static string WrapText(string text, int maxLength)
-    {
-        if (text.Length <= maxLength)
-            return text;
-        return text.Substring(0, maxLength) + "...";
-    }
 }

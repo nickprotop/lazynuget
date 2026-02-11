@@ -4,6 +4,7 @@ using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
 using Spectre.Console;
 using LazyNuGet.Models;
+using LazyNuGet.UI.Utilities;
 using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 
 namespace LazyNuGet.UI.Components;
@@ -40,129 +41,145 @@ public static class InteractiveDashboardBuilder
         var summary = BuildPackageSummary(project, outdatedPackages);
         controls.Add(summary);
 
-        // Interactive Quick Actions - Title + Real buttons!
-        var actionTitle = BuildActionButtons(project, outdatedPackages, onViewPackages, onUpdateAll, onRestore);
-        controls.Add(actionTitle);
+        // Separator before toolbar
+        var separator = Controls.Rule("[grey70]Quick Actions[/]");
+        separator.Margin = new Margin(1, 0, 1, 0);
+        controls.Add(separator);
 
-        // Add actual button controls
-        var buttons = GetActionButtons(outdatedPackages, onViewPackages, onUpdateAll, onRestore);
-        controls.AddRange(buttons);
+        // Empty markup above toolbar for background extension
+        var toolbarTop = Controls.Markup()
+            .AddEmptyLine()
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithMargin(1, 0, 1, 0)
+            .Build();
+        controls.Add(toolbarTop);
+
+        // Action toolbar
+        var toolbar = BuildActionToolbar(outdatedPackages, onViewPackages, onUpdateAll, onRestore);
+        controls.Add(toolbar);
+
+        // Empty markup below toolbar for background extension
+        var toolbarBottom = Controls.Markup()
+            .AddEmptyLine()
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithMargin(1, 0, 1, 0)
+            .Build();
+        controls.Add(toolbarBottom);
+
+        // Separator after toolbar
+        var separatorAfter = Controls.Rule();
+        separatorAfter.Margin = new Margin(1, 0, 1, 0);
+        controls.Add(separatorAfter);
 
         return controls;
     }
 
-    private static MarkupControl BuildStatsCard(ProjectInfo project, List<PackageReference> outdatedPackages)
+    private static IWindowControl BuildStatsCard(ProjectInfo project, List<PackageReference> outdatedPackages)
     {
         var total = project.Packages.Count;
         var outdated = outdatedPackages.Count;
         var vulnerable = project.VulnerableCount;
 
-        return Controls.Markup()
-            .AddLine("┌─────────┬─────────┬─────────┐")
-            .AddLine("│ Total   │Outdated │  Vuln   │")
-            .AddLine("│         │         │         │")
-            .AddLine($"│  [cyan1]{total,3}[/]    │  [yellow]{outdated,3}[/]    │  [red]{vulnerable,3}[/]    │")
-            .AddLine("│         │         │         │")
-            .AddLine("│ 📦      │ ⚠       │ ✓       │")
-            .AddLine("└─────────┴─────────┴─────────┘")
-            .AddEmptyLine()
+        return Controls.Table()
+            .AddColumn("📦 [cyan1]Total[/]", Spectre.Console.Justify.Center, 11)
+            .AddColumn("⚠ [yellow]Outdated[/]", Spectre.Console.Justify.Center, 11)
+            .AddColumn("✓ [grey70]Vuln[/]", Spectre.Console.Justify.Center, 11)
+            .AddRow($"[cyan1 bold]{total}[/]", $"[yellow bold]{outdated}[/]", $"[red bold]{vulnerable}[/]")
+            .WithBorderColor(Color.Grey50)
+            .SingleLine()
+            .ShowHeader()
+            .WithHeaderColors(Color.Grey70, Color.Black)
+            .WithBackgroundColor(null)
             .WithMargin(1, 0, 0, 0)
+            .WithHorizontalAlignment(HorizontalAlignment.Left)
             .Build();
     }
 
-    private static MarkupControl BuildPackageSummary(ProjectInfo project, List<PackageReference> outdatedPackages)
+    private static IWindowControl BuildPackageSummary(ProjectInfo project, List<PackageReference> outdatedPackages)
     {
-        var builder = Controls.Markup();
-
-        if (project.Packages.Count > 0)
+        if (project.Packages.Count == 0)
         {
-            builder.AddLine("[grey70 bold]Installed Packages:[/]");
-            var topPackages = project.Packages.Take(5);
-            foreach (var pkg in topPackages)
-            {
-                var statusIndicator = pkg.IsOutdated ? "[yellow]⚠[/]" : "[green]✓[/]";
-                builder.AddLine($"{statusIndicator} [grey70]{Markup.Escape(pkg.Id)} {pkg.Version}[/]");
-            }
-
-            if (project.Packages.Count > 5)
-            {
-                builder.AddLine($"[grey50]... and {project.Packages.Count - 5} more[/]");
-            }
-            builder.AddEmptyLine();
+            return Controls.Markup()
+                .AddLine("[grey50]No packages installed[/]")
+                .AddEmptyLine()
+                .WithMargin(1, 0, 0, 0)
+                .Build();
         }
 
-        // Needs Attention section
-        if (outdatedPackages.Any())
+        // Create table with proper TableControl
+        var table = Controls.Table()
+            .AddColumn("St", Spectre.Console.Justify.Center, 4)
+            .AddColumn("Package", Spectre.Console.Justify.Left, 30)
+            .AddColumn("Version", Spectre.Console.Justify.Left, 22)
+            .WithBorderColor(Color.Grey50)
+            .SingleLine()
+            .ShowHeader()
+            .WithHeaderColors(Color.Grey70, Color.Black)
+            .WithBackgroundColor(null)
+            .WithMargin(1, 0, 0, 0)
+            .WithHorizontalAlignment(HorizontalAlignment.Left);
+
+        // Add package rows
+        foreach (var pkg in project.Packages)
         {
-            builder.AddLine("[yellow bold]Needs Attention:[/]");
-            foreach (var pkg in outdatedPackages.Take(5))
+            string status = pkg.IsOutdated ? "[yellow]⚠[/]" : "[green]✓[/]";
+            string packageName = Markup.Escape(pkg.Id);
+
+            // Truncate package name if too long (max 28 chars to fit in column)
+            if (packageName.Length > 28)
             {
-                builder.AddLine($"[yellow]⚠ {Markup.Escape(pkg.Id)}[/]");
-                builder.AddLine($"  [grey70]{pkg.Version} → {pkg.LatestVersion} available[/]");
+                packageName = packageName.Substring(0, 25) + "...";
             }
 
-            if (outdatedPackages.Count > 5)
+            string versionInfo;
+            if (pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion))
             {
-                builder.AddLine($"[grey50]... and {outdatedPackages.Count - 5} more outdated[/]");
+                versionInfo = $"[grey70]{pkg.Version}[/] [yellow]→ {pkg.LatestVersion}[/]";
             }
-            builder.AddEmptyLine();
-        }
-        else if (project.Packages.Count > 0)
-        {
-            builder.AddLine("[green bold]✓ All packages up-to-date![/]");
-            builder.AddEmptyLine();
+            else
+            {
+                versionInfo = $"[grey70]{pkg.Version}[/]";
+            }
+
+            table.AddRow(status, $"[grey70]{packageName}[/]", versionInfo);
         }
 
-        return builder.WithMargin(1, 0, 0, 0).Build();
+        return table.Build();
     }
 
-    private static IWindowControl BuildActionButtons(
-        ProjectInfo project,
+    private static IWindowControl BuildActionToolbar(
         List<PackageReference> outdatedPackages,
         Action onViewPackages,
         Action onUpdateAll,
         Action onRestore)
     {
-        // Title
-        return Controls.Markup()
-            .AddLine("[cyan1 bold]Quick Actions:[/]")
-            .AddLine("")
-            .AddLine("[grey70]Press buttons below or use keyboard shortcuts:[/]")
-            .WithMargin(1, 0, 0, 1)
-            .Build();
-    }
-
-    public static List<IWindowControl> GetActionButtons(
-        List<PackageReference> outdatedPackages,
-        Action onViewPackages,
-        Action onUpdateAll,
-        Action onRestore)
-    {
-        var buttons = new List<IWindowControl>();
-
         // View Packages button
-        buttons.Add(Controls.Button("📦 View Packages (Enter)")
-            .WithAlignment(HorizontalAlignment.Left)
-            .WithMargin(1, 0, 0, 0)
+        var viewBtn = Controls.Button("[grey93]View Packages[/] [grey50](Enter)[/]")
             .OnClick((s, e) => onViewPackages())
-            .Build());
+            .WithMargin(1, 0, 0, 0)
+            .Build();
 
         // Update All button
-        buttons.Add(Controls.Button(outdatedPackages.Any() ? "⚡ Update All Outdated (Ctrl+U)" : "✓ All Up-to-Date")
-            .WithAlignment(HorizontalAlignment.Left)
-            .WithMargin(1, 0, 0, 0)
+        var updateBtn = Controls.Button(outdatedPackages.Any() ? "[grey93]Update All[/] [grey50](Ctrl+U)[/]" : "[grey50]All Up-to-Date[/]")
             .OnClick((s, e) => onUpdateAll())
             .Enabled(outdatedPackages.Any())
-            .Build());
+            .Build();
 
         // Restore button
-        buttons.Add(Controls.Button("🔄 Restore Packages (Ctrl+R)")
-            .WithAlignment(HorizontalAlignment.Left)
-            .WithMargin(1, 0, 0, 1)
+        var restoreBtn = Controls.Button("[grey93]Restore[/] [grey50](Ctrl+R)[/]")
             .OnClick((s, e) => onRestore())
-            .Build());
+            .Build();
 
-        return buttons;
+        return Controls.Toolbar()
+            .AddButton(viewBtn)
+            .AddButton(updateBtn)
+            .AddButton(restoreBtn)
+            .WithSpacing(2)
+            .WithBackgroundColor(ColorScheme.StatusBarBackground)
+            .WithMargin(1, 0, 1, 0)
+            .Build();
     }
 
     private static string ShortenPath(string path)

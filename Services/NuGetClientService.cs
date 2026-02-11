@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using LazyNuGet.Models;
 using SharpConsoleUI.Logging;
+using NuGet.Versioning;
 
 namespace LazyNuGet.Services;
 
@@ -61,8 +62,7 @@ public class NuGetClientService : IDisposable
 
     /// <summary>
     /// Get detailed information about a specific package.
-    /// Uses the Search API (with packageid: filter) which is reliable and
-    /// doesn't suffer from the registration API's pagination issues.
+    /// Uses the Search API for metadata and Flat Container API for ALL versions.
     /// </summary>
     public async Task<NuGetPackage?> GetPackageDetailsAsync(string packageId, CancellationToken cancellationToken = default)
     {
@@ -76,6 +76,35 @@ public class NuGetClientService : IDisposable
             if (data == null)
                 return null;
 
+            // Fetch ALL versions from flat container API (no pagination, complete list)
+            List<string> allVersions = new();
+            try
+            {
+                var flatUrl = $"{FlatContainerBaseUrl}/{packageId.ToLowerInvariant()}/index.json";
+                var flatResponse = await _httpClient.GetFromJsonAsync<FlatContainerResponse>(flatUrl, cancellationToken);
+                if (flatResponse?.Versions != null && flatResponse.Versions.Count > 0)
+                {
+                    // Sort using semantic versioning (descending - newest first)
+                    allVersions = flatResponse.Versions
+                        .Select(v => (version: v, parsed: NuGetVersion.TryParse(v, out var nv) ? nv : null))
+                        .Where(x => x.parsed != null)
+                        .OrderByDescending(x => x.parsed)
+                        .Select(x => x.version)
+                        .ToList();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logService?.LogWarning($"Could not fetch all versions from flat container, using search API versions: {ex.Message}", "NuGet");
+                // Fallback to search API versions if flat container fails
+                allVersions = data.Versions?.Select(v => v.Version ?? string.Empty)
+                    .Select(v => (version: v, parsed: NuGetVersion.TryParse(v, out var nv) ? nv : null))
+                    .Where(x => x.parsed != null)
+                    .OrderByDescending(x => x.parsed)
+                    .Select(x => x.version)
+                    .ToList() ?? new List<string>();
+            }
+
             return new NuGetPackage
             {
                 Id = data.Id ?? packageId,
@@ -85,8 +114,7 @@ public class NuGetClientService : IDisposable
                 Authors = data.Authors ?? new List<string>(),
                 Tags = data.Tags ?? new List<string>(),
                 TotalDownloads = data.TotalDownloads,
-                Versions = data.Versions?.Select(v => v.Version ?? string.Empty)
-                    .OrderByDescending(v => v).ToList() ?? new List<string>()
+                Versions = allVersions
             };
         }
         catch (Exception ex)

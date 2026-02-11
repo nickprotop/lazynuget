@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using LazyNuGet.Models;
+using SharpConsoleUI.Logging;
 
 namespace LazyNuGet.Services;
 
@@ -8,6 +9,12 @@ namespace LazyNuGet.Services;
 /// </summary>
 public class ProjectParserService
 {
+    private readonly ILogService? _logService;
+
+    public ProjectParserService(ILogService? logService = null)
+    {
+        _logService = logService;
+    }
     /// <summary>
     /// Parse a project file and extract metadata and package references
     /// </summary>
@@ -53,8 +60,7 @@ public class ProjectParserService
             }
             catch (Exception ex)
             {
-                // Silently fail - parser service doesn't have logging injected yet
-                // Could inject ILogService if needed
+                _logService?.LogError($"Failed to parse project file: {projectFilePath}", ex, "Parser");
                 return null;
             }
         });
