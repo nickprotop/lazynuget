@@ -1,0 +1,24 @@
+<svg width="600" height="120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="600" height="120" fill="#1e1e1e"/>
+
+  <!-- Package Box Icon -->
+  <g transform="translate(30, 25)">
+    <!-- Box outline -->
+    <rect x="0" y="15" width="60" height="60" fill="none" stroke="#00d9ff" stroke-width="2.5"/>
+    <!-- Box top -->
+    <polygon points="0,15 30,0 60,15" fill="none" stroke="#00d9ff" stroke-width="2.5"/>
+    <!-- Box center line -->
+    <line x1="30" y1="0" x2="30" y2="75" stroke="#00d9ff" stroke-width="2.5"/>
+    <!-- Ribbon horizontal -->
+    <line x1="0" y1="45" x2="60" y2="45" stroke="#f59e0b" stroke-width="3"/>
+    <!-- Ribbon vertical -->
+    <line x1="30" y1="15" x2="30" y2="75" stroke="#f59e0b" stroke-width="3"/>
+  </g>
+
+  <!-- Text: LazyNuGet -->
+  <text x="120" y="70" font-family="monospace" font-size="42" font-weight="bold" fill="#00d9ff">LazyNuGet</text>
+
+  <!-- Tagline -->
+  <text x="120" y="95" font-family="monospace" font-size="16" fill="#94a3b8">Terminal NuGet package manager</text>
+</svg>

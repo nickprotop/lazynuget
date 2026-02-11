@@ -1,0 +1,46 @@
+name: Build
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal
+        continue-on-error: true
+
+      - name: Build linux-x64
+        run: |
+          dotnet publish -c Release \
+            -r linux-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true
+
+      - name: Build linux-arm64
+        run: |
+          dotnet publish -c Release \
+            -r linux-arm64 \
+            --self-contained true \
+            -p:PublishSingleFile=true

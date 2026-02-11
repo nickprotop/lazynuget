@@ -12,10 +12,11 @@ class Program
         var configService = new ConfigurationService();
         var settings = configService.Load();
 
-        // Priority: CLI arg > saved last folder > current directory
+        // Priority: CLI arg > current directory
+        // Note: LastFolderPath is tracked for UI history, not used as default
         string folderPath = args.Length > 0
             ? args[0]
-            : settings.LastFolderPath ?? Environment.CurrentDirectory;
+            : Environment.CurrentDirectory;
 
         // Validate folder exists
         if (!Directory.Exists(folderPath))

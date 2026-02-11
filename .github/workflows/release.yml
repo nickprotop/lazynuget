@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build self-contained binary for linux-x64
+        run: |
+          dotnet publish -c Release \
+            -r linux-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -o ./publish/linux-x64
+
+      - name: Build self-contained binary for linux-arm64
+        run: |
+          dotnet publish -c Release \
+            -r linux-arm64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -o ./publish/linux-arm64
+
+      - name: Rename binaries
+        run: |
+          mv ./publish/linux-x64/LazyNuGet ./publish/lazynuget-linux-x64
+          mv ./publish/linux-arm64/LazyNuGet ./publish/lazynuget-linux-arm64
+          chmod +x ./publish/lazynuget-*
+
+      - name: Copy install and uninstall scripts
+        run: |
+          cp install.sh ./publish/install.sh
+          cp uninstall.sh ./publish/uninstall.sh
+          chmod +x ./publish/install.sh
+          chmod +x ./publish/uninstall.sh
+
+      - name: Generate checksums
+        run: |
+          cd publish
+          sha256sum lazynuget-linux-x64 > SHA256SUMS
+          sha256sum lazynuget-linux-arm64 >> SHA256SUMS
+          cd ..
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get current tag from ref
+          CURRENT_TAG=${GITHUB_REF#refs/tags/}
+
+          # Fetch all tags
+          git fetch --tags --force
+
+          # Get previous tag (second most recent)
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n 1)
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release - get all commits
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            # Get commits since last tag
+            CHANGELOG=$(git log ${PREV_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Save changelog to output
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            publish/lazynuget-linux-x64
+            publish/lazynuget-linux-arm64
+            publish/install.sh
+            publish/uninstall.sh
+            publish/SHA256SUMS
+          body: |
+            # LazyNuGet ${{ steps.version.outputs.VERSION }}
+
+            A terminal-based NuGet package manager for .NET projects, inspired by lazygit.
+
+            ## Installation
+
+            **Quick Install (Recommended):**
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/nickprotop/lazynuget/main/install.sh | bash
+            ```
+
+            **Manual Install:**
+            1. Download the binary for your architecture:
+               - `lazynuget-linux-x64` for Intel/AMD (x86_64)
+               - `lazynuget-linux-arm64` for ARM (Raspberry Pi, etc.)
+            2. Make executable and move to PATH:
+            ```bash
+            chmod +x lazynuget-linux-x64
+            sudo mv lazynuget-linux-x64 /usr/local/bin/lazynuget
+            ```
+
+            ## What's Changed
+
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ## Checksums
+
+            See `SHA256SUMS` for file verification.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
