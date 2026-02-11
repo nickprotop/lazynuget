@@ -55,6 +55,8 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 - 🔍 **Package Browser** - View installed packages with version information
 - ⚠️ **Update Detection** - Identifies outdated packages with real-time NuGet.org checks
 - 🔎 **NuGet.org Search** - Search and browse packages directly from the terminal
+- 📜 **Operation History** - Track all NuGet operations with filtering and retry capabilities (Ctrl+H)
+- 📊 **Rich Package Metadata** - View authors, license, tags, target frameworks, vulnerabilities, and more
 - ⌨️ **Keyboard-Driven** - Navigate everything with keyboard shortcuts (lazygit-style)
 - 🎨 **Clean TUI** - Beautiful terminal interface with syntax highlighting
 - 📊 **Dashboard Stats** - See package counts and outdated packages at a glance
@@ -69,6 +71,10 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 | `Ctrl+O` | Open folder picker |
 | `Ctrl+R` | Reload projects |
 | `Ctrl+S` | Search NuGet.org |
+| `Ctrl+H` | View operation history |
+| `Ctrl+U` | Update package / Update all |
+| `Ctrl+V` | Change package version |
+| `Ctrl+X` | Remove package |
 | `Esc` | Go back / Close dialogs |
 | `Alt+F` | File menu |
 
