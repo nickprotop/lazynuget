@@ -7,6 +7,7 @@ using SharpConsoleUI.Core;
 using SharpConsoleUI.Dialogs;
 using Spectre.Console;
 using LazyNuGet.Models;
+using LazyNuGet.UI;
 using LazyNuGet.UI.Utilities;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Components;
@@ -23,6 +24,7 @@ public class LazyNuGetWindow : IDisposable
 {
     private readonly ConsoleWindowSystem _windowSystem;
     private Window? _window;
+    private LogViewerWindow? _logViewer;
     private volatile bool _disposed = false;
 
     // Named controls
@@ -34,14 +36,12 @@ public class LazyNuGetWindow : IDisposable
     private ListControl? _contextList;
     private ScrollablePanelControl? _detailsPanel;
     private MarkupControl? _detailsContent;  // Content inside details panel
-    private List<IWindowControl> _currentDetailControls = new();  // Track all controls in details panel
 
 
     // State
     private string _currentFolderPath;
     private List<ProjectInfo> _projects = new();
     private ProjectInfo? _selectedProject;
-    private PackageReference? _selectedPackage;
     private ViewState _currentViewState = ViewState.Projects;
     private List<NuGetPackage> _searchResults = new();
 
@@ -60,7 +60,7 @@ public class LazyNuGetWindow : IDisposable
 
         // Initialize services
         _discoveryService = new ProjectDiscoveryService();
-        _parserService = new ProjectParserService();
+        _parserService = new ProjectParserService(_windowSystem.LogService);
         _nugetService = new NuGetClientService(_windowSystem.LogService);
         _cliService = new DotNetCliService(_windowSystem.LogService);
 
@@ -76,6 +76,8 @@ public class LazyNuGetWindow : IDisposable
         if (_window != null)
         {
             _windowSystem.AddWindow(_window);
+            // Set initial focus to the left panel list
+            _contextList?.SetFocus(true, FocusReason.Programmatic);
         }
     }
 
@@ -126,12 +128,13 @@ public class LazyNuGetWindow : IDisposable
             .Build());
 
         // Main grid - 2 panels
-        _leftPanelHeader = Controls.Markup($"[{ColorScheme.PrimaryMarkup} bold]▸ Projects[/]")
+        _leftPanelHeader = Controls.Markup("[grey70]Projects[/]")
             .WithMargin(1, 0, 0, 0)
-            .WithBackgroundColor(ColorScheme.WindowBackground)
             .Build();
 
         _contextList = Controls.List()
+            .WithTitle(string.Empty)
+            .WithMargin(0, 1, 0, 0)
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill)
             .WithColors(ColorScheme.SidebarBackground, Color.Grey93)
@@ -140,9 +143,8 @@ public class LazyNuGetWindow : IDisposable
             .SimpleMode()
             .Build();
 
-        _rightPanelHeader = Controls.Markup("[grey50]Dashboard[/]")
+        _rightPanelHeader = Controls.Markup("[grey70]Dashboard[/]")
             .WithMargin(1, 0, 0, 0)
-            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
             .Build();
 
         _detailsPanel = Controls.ScrollablePanel()
@@ -222,8 +224,7 @@ public class LazyNuGetWindow : IDisposable
                     _topStatusRight.SetContent(new List<string> { $"[grey70]{stats}[/]" });
                 }
 
-                // Keep panel focus indicators in sync
-                UpdatePanelFocusIndicators();
+                // Panel focus indicators update automatically via FocusStateService.StateChanged event
 
                 await Task.Delay(1000, ct);
             }
@@ -242,23 +243,42 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_window == null) return;
 
+        // Subscribe to FocusStateService for automatic panel indicator updates
+        _windowSystem.FocusStateService.StateChanged += (sender, e) =>
+        {
+            // Panel title focus indicators disabled
+        };
+
         _window.KeyPressed += (sender, e) =>
         {
-            // Up/Down arrows redirect to left panel list when it doesn't have focus.
-            // Must be checked BEFORE AlreadyHandled — the dispatcher uses arrows for
-            // focus traversal, which sets AlreadyHandled and would block us.
-            // BUT: if the details panel or any interactive control inside it has focus,
-            // the user is scrolling/navigating the right panel — don't steal the arrows.
-            if (e.KeyInfo.Key == ConsoleKey.UpArrow && _contextList != null && !_contextList.HasFocus
-                && !DetailsAreaHasFocus() && _contextList.Items.Count > 0)
+            // Helper: check if any control in details panel has focus (using FocusStateService)
+            bool DetailsHasFocus()
+            {
+                var focused = _windowSystem.FocusStateService.FocusedControl;
+                if (focused == null) return false;
+                if (focused == _detailsPanel) return true;
+                // Check if focused control's container is the details panel
+                if (focused is IWindowControl windowControl)
+                {
+                    return windowControl.Container == _detailsPanel;
+                }
+                return false;
+            }
+
+            // Up/Down arrows: Navigate list WITHOUT changing focus (convenience feature)
+            // Only intercept if:
+            // 1. Event not already handled (let focused controls process first)
+            // 2. Details panel doesn't have focus (let it handle its own arrows)
+            if (!e.Handled && e.KeyInfo.Key == ConsoleKey.UpArrow && _contextList != null
+                && !DetailsHasFocus() && _contextList.Items.Count > 0)
             {
                 if (_contextList.SelectedIndex > 0)
                     _contextList.SelectedIndex--;
                 e.Handled = true;
                 return;
             }
-            if (e.KeyInfo.Key == ConsoleKey.DownArrow && _contextList != null && !_contextList.HasFocus
-                && !DetailsAreaHasFocus() && _contextList.Items.Count > 0)
+            if (!e.Handled && e.KeyInfo.Key == ConsoleKey.DownArrow && _contextList != null
+                && !DetailsHasFocus() && _contextList.Items.Count > 0)
             {
                 if (_contextList.SelectedIndex < _contextList.Items.Count - 1)
                     _contextList.SelectedIndex++;
@@ -266,21 +286,28 @@ public class LazyNuGetWindow : IDisposable
                 return;
             }
 
-            // Left/Right arrows switch focus between the left list and right details panel.
+            // Left/Right arrows: Switch focus BETWEEN panels (panel navigation)
             // Must also be before AlreadyHandled for the same reason as Up/Down.
-            if (e.KeyInfo.Key == ConsoleKey.LeftArrow && !(_contextList?.HasFocus == true))
+            if (e.KeyInfo.Key == ConsoleKey.LeftArrow)
             {
-                _contextList?.SetFocus(true, FocusReason.Programmatic);
-                UpdatePanelFocusIndicators();
-                e.Handled = true;
-                return;
+                var focused = _windowSystem.FocusStateService.FocusedControl;
+                if (focused != _contextList)
+                {
+                    _contextList?.SetFocus(true, FocusReason.Keyboard);
+                    // Indicator update is automatic via StateChanged event
+                    e.Handled = true;
+                    return;
+                }
             }
-            if (e.KeyInfo.Key == ConsoleKey.RightArrow && !DetailsAreaHasFocus())
+            if (e.KeyInfo.Key == ConsoleKey.RightArrow)
             {
-                _detailsPanel?.SetFocus(true, FocusReason.Programmatic);
-                UpdatePanelFocusIndicators();
-                e.Handled = true;
-                return;
+                if (!DetailsHasFocus())
+                {
+                    _detailsPanel?.SetFocus(true, FocusReason.Keyboard);
+                    // Indicator update is automatic via StateChanged event
+                    e.Handled = true;
+                    return;
+                }
             }
 
             // Escape must run BEFORE AlreadyHandled check — the dispatcher
@@ -289,6 +316,16 @@ public class LazyNuGetWindow : IDisposable
             if (e.KeyInfo.Key == ConsoleKey.Escape)
             {
                 HandleEscapeKey();
+                e.Handled = true;
+                return;
+            }
+
+            // Enter must also run BEFORE AlreadyHandled — we want Enter to ALWAYS
+            // navigate forward (e.g., Projects → Packages view), regardless of
+            // whether the list control handles it first.
+            if (e.KeyInfo.Key == ConsoleKey.Enter)
+            {
+                HandleEnterKey();
                 e.Handled = true;
                 return;
             }
@@ -313,12 +350,6 @@ public class LazyNuGetWindow : IDisposable
                 _ = LoadProjectsAsync();
                 e.Handled = true;
             }
-            // Enter - Navigate forward
-            else if (e.KeyInfo.Key == ConsoleKey.Enter)
-            {
-                HandleEnterKey();
-                e.Handled = true;
-            }
             // Ctrl+U - Update package (in packages view) or update all (in projects view)
             else if (e.KeyInfo.Key == ConsoleKey.U && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
@@ -332,6 +363,15 @@ public class LazyNuGetWindow : IDisposable
                 }
                 e.Handled = true;
             }
+            // Ctrl+V - Change package version
+            else if (e.KeyInfo.Key == ConsoleKey.V && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                if (_currentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkgToChange)
+                {
+                    _ = HandleChangeVersionAsync(pkgToChange);
+                }
+                e.Handled = true;
+            }
             // Ctrl+X - Remove package
             else if (e.KeyInfo.Key == ConsoleKey.X && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
@@ -339,6 +379,12 @@ public class LazyNuGetWindow : IDisposable
                 {
                     _ = HandleRemovePackageAsync(pkgToRemove);
                 }
+                e.Handled = true;
+            }
+            // Ctrl+L - Show log viewer
+            else if (e.KeyInfo.Key == ConsoleKey.L && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                ShowLogViewer();
                 e.Handled = true;
             }
         };
@@ -417,40 +463,82 @@ public class LazyNuGetWindow : IDisposable
 
         try
         {
-            // Check each project's packages for updates
-            foreach (var project in _projects)
+            // Collect all packages from all projects
+            var allPackages = _projects.SelectMany(p => p.Packages).ToList();
+            if (allPackages.Count == 0) return;
+
+            _windowSystem.LogService.LogInfo($"Checking {allPackages.Count} packages for updates...", "NuGet");
+
+            // Use semaphore to limit concurrent API calls (max 10 at a time)
+            var semaphore = new SemaphoreSlim(10, 10);
+            var completedCount = 0;
+            var lastUiUpdate = DateTime.MinValue;
+            var uiUpdateLock = new object();
+
+            // Check packages in parallel with throttling
+            var tasks = allPackages.Select(async package =>
             {
-                foreach (var package in project.Packages)
+                await semaphore.WaitAsync();
+                try
                 {
-                    try
+                    var (isOutdated, latestVersion) = await _nugetService.CheckIfOutdatedAsync(
+                        package.Id,
+                        package.Version);
+
+                    package.LatestVersion = latestVersion;
+
+                    // Increment completed count and update UI periodically (not on every package)
+                    lock (uiUpdateLock)
                     {
-                        var (isOutdated, latestVersion) = await _nugetService.CheckIfOutdatedAsync(
-                            package.Id,
-                            package.Version);
+                        completedCount++;
+                        var now = DateTime.Now;
+                        var shouldUpdate = (now - lastUiUpdate).TotalMilliseconds >= 500 || // Every 500ms
+                                          completedCount % 5 == 0 || // Every 5 packages
+                                          completedCount == allPackages.Count; // Final update
 
-                        package.LatestVersion = latestVersion;
-
-                        // Update the UI if we're still in the projects view
-                        if (_currentViewState == ViewState.Projects)
+                        if (shouldUpdate)
                         {
-                            // Refresh the project list to show updated counts
+                            lastUiUpdate = now;
+                            // Trigger UI refresh based on current view
                             var currentSelection = _contextList?.SelectedIndex ?? 0;
-                            SwitchToProjectsView();
-                            if (_contextList != null && currentSelection >= 0 && currentSelection < _projects.Count)
+
+                            if (_currentViewState == ViewState.Projects)
                             {
-                                _contextList.SelectedIndex = currentSelection;
+                                SwitchToProjectsView();
+                                if (_contextList != null && currentSelection >= 0 && currentSelection < _projects.Count)
+                                {
+                                    _contextList.SelectedIndex = currentSelection;
+                                }
+                            }
+                            else if (_currentViewState == ViewState.Packages && _selectedProject != null)
+                            {
+                                // Refresh the current project view
+                                var refreshed = _projects.FirstOrDefault(p => p.FilePath == _selectedProject.FilePath);
+                                if (refreshed != null)
+                                {
+                                    SwitchToPackagesView(refreshed);
+                                    if (_contextList != null && currentSelection >= 0 && currentSelection < refreshed.Packages.Count)
+                                    {
+                                        _contextList.SelectedIndex = currentSelection;
+                                    }
+                                }
                             }
                         }
                     }
-                    catch
-                    {
-                        // Continue checking other packages even if one fails
-                    }
-
-                    // Small delay to avoid overwhelming the API
-                    await Task.Delay(100);
                 }
-            }
+                catch (Exception ex)
+                {
+                    _windowSystem.LogService.LogWarning($"Failed to check {package.Id}: {ex.Message}", "NuGet");
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks);
+
+            _windowSystem.LogService.LogInfo($"Completed checking {allPackages.Count} packages", "NuGet");
         }
         catch (Exception ex)
         {
@@ -465,7 +553,10 @@ public class LazyNuGetWindow : IDisposable
 
         _currentViewState = ViewState.Projects;
         _selectedProject = null;
-        _selectedPackage = null;
+
+        // Update panel titles
+        _leftPanelHeader?.SetContent(new List<string> { "[grey70]Projects[/]" });
+        _rightPanelHeader?.SetContent(new List<string> { "[grey70]Dashboard[/]" });
 
         // Update breadcrumb — show folder name (not full path) for a cleaner look
         var folderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
@@ -503,24 +594,31 @@ public class LazyNuGetWindow : IDisposable
                 restoreIndex = _projects.FindIndex(p => p.FilePath == previousProject.FilePath);
                 if (restoreIndex < 0) restoreIndex = 0;
             }
+            var wasAtIndex = _contextList.SelectedIndex == restoreIndex;
             _contextList.SelectedIndex = restoreIndex;
-            HandleSelectionChanged();
+            // If already at this index, event won't fire, so call manually
+            if (wasAtIndex)
+            {
+                HandleSelectionChanged();
+            }
         }
         else
         {
             UpdateDetailsContent(new List<string> { "[grey50]No projects found[/]" });
         }
 
-        // Focus the left list by default
+        // Focus the left list by default (indicators update automatically)
         _contextList?.SetFocus(true, FocusReason.Programmatic);
-        UpdatePanelFocusIndicators();
     }
 
     private void SwitchToPackagesView(ProjectInfo project)
     {
         _currentViewState = ViewState.Packages;
         _selectedProject = project;
-        _selectedPackage = null;
+
+        // Update panel titles
+        _leftPanelHeader?.SetContent(new List<string> { $"[grey70]{Markup.Escape(project.Name)} › Packages[/]" });
+        _rightPanelHeader?.SetContent(new List<string> { "[grey70]Details[/]" });
 
         // Update breadcrumb
         var projFolderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
@@ -543,17 +641,21 @@ public class LazyNuGetWindow : IDisposable
         // Trigger initial selection to show package details
         if (_contextList != null && _contextList.Items.Count > 0)
         {
+            var wasZero = _contextList.SelectedIndex == 0;
             _contextList.SelectedIndex = 0;
-            HandleSelectionChanged();
+            // If already 0, event won't fire, so call manually
+            if (wasZero)
+            {
+                HandleSelectionChanged();
+            }
         }
         else
         {
             UpdateDetailsContent(new List<string> { "[grey50]No packages in this project[/]" });
         }
 
-        // Focus the left list by default
+        // Focus the left list by default (indicators update automatically)
         _contextList?.SetFocus(true, FocusReason.Programmatic);
-        UpdatePanelFocusIndicators();
     }
 
     private void HandleEnterKey()
@@ -676,6 +778,7 @@ public class LazyNuGetWindow : IDisposable
             package,
             nugetData: null,
             onUpdate: () => HandleUpdatePackage(package),
+            onChangeVersion: () => HandleChangeVersion(package),
             onRemove: () => HandleRemovePackage(package));
         UpdateDetailsPanel(loadingControls);
 
@@ -703,6 +806,7 @@ public class LazyNuGetWindow : IDisposable
                 package,
                 nugetData,
                 onUpdate: () => HandleUpdatePackage(package),
+                onChangeVersion: () => HandleChangeVersion(package),
                 onRemove: () => HandleRemovePackage(package));
             UpdateDetailsPanel(controls);
         }
@@ -715,6 +819,11 @@ public class LazyNuGetWindow : IDisposable
     private void HandleUpdatePackage(PackageReference package)
     {
         _ = HandleUpdatePackageAsync(package);
+    }
+
+    private void HandleChangeVersion(PackageReference package)
+    {
+        _ = HandleChangeVersionAsync(package);
     }
 
     private void HandleRemovePackage(PackageReference package)
@@ -741,6 +850,10 @@ public class LazyNuGetWindow : IDisposable
     {
         _currentViewState = ViewState.Search;
         _searchResults = new List<NuGetPackage> { selectedPackage };
+
+        // Update panel titles
+        _leftPanelHeader?.SetContent(new List<string> { "[grey70]Install Package[/]" });
+        _rightPanelHeader?.SetContent(new List<string> { "[grey70]Details[/]" });
 
         // Update breadcrumb
         var searchFolderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
@@ -773,9 +886,8 @@ public class LazyNuGetWindow : IDisposable
         // Update help bar
         _bottomHelpBar?.SetContent(new List<string> { GetHelpText() });
 
-        // Focus the left list by default
+        // Focus the left list by default (indicators update automatically)
         _contextList?.SetFocus(true, FocusReason.Programmatic);
-        UpdatePanelFocusIndicators();
     }
 
     private void ShowSearchPackageDetails(NuGetPackage package)
@@ -939,6 +1051,87 @@ public class LazyNuGetWindow : IDisposable
         }
     }
 
+    private async Task HandleChangeVersionAsync(PackageReference package)
+    {
+        if (_selectedProject == null || _cliService == null || _nugetService == null) return;
+
+        try
+        {
+            // Fetch available versions from NuGet
+            var nugetData = await _nugetService.GetPackageDetailsAsync(package.Id);
+            if (nugetData == null || !nugetData.Versions.Any())
+            {
+                _windowSystem.NotificationStateService.ShowNotification(
+                    "No Versions Available",
+                    $"Could not retrieve version list for {package.Id}",
+                    NotificationSeverity.Warning,
+                    timeout: 3000,
+                    parentWindow: _window);
+                return;
+            }
+
+            // Show version selector modal
+            var selectedVersion = await VersionSelectorModal.ShowAsync(
+                _windowSystem, package, nugetData.Versions, _window);
+
+            if (string.IsNullOrEmpty(selectedVersion))
+                return; // User cancelled
+
+            // Check if same version
+            if (string.Equals(selectedVersion, package.Version, StringComparison.OrdinalIgnoreCase))
+            {
+                _windowSystem.NotificationStateService.ShowNotification(
+                    "Same Version",
+                    $"{package.Id} is already at version {selectedVersion}",
+                    NotificationSeverity.Info,
+                    timeout: 3000,
+                    parentWindow: _window);
+                return;
+            }
+
+            // Confirm version change
+            var action = string.Compare(selectedVersion, package.Version, StringComparison.OrdinalIgnoreCase) > 0
+                ? "upgrade" : "downgrade";
+            var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
+                $"Change Version",
+                $"{action.ToUpper()} {package.Id} from {package.Version} to {selectedVersion}?",
+                parentWindow: _window);
+            if (!confirm) return;
+
+            var notifId = _windowSystem.NotificationStateService.ShowNotification(
+                "Changing Version", $"Installing {Markup.Escape(package.Id)} {selectedVersion}...",
+                NotificationSeverity.Info, timeout: 0, parentWindow: _window);
+
+            // Use AddPackageAsync which will update the version if package already exists
+            var result = await _cliService.AddPackageAsync(
+                _selectedProject.FilePath, package.Id, selectedVersion);
+
+            _windowSystem.NotificationStateService.DismissNotification(notifId);
+
+            if (result.Success)
+            {
+                await ReloadProjectAndRefreshView(_selectedProject);
+                _windowSystem.NotificationStateService.ShowNotification(
+                    "Version Changed",
+                    $"{package.Id} changed to {selectedVersion}",
+                    NotificationSeverity.Success,
+                    timeout: 3000,
+                    parentWindow: _window);
+            }
+            else
+            {
+                await ErrorModal.ShowAsync(_windowSystem, "Version Change Failed",
+                    $"Failed to change {package.Id} to version {selectedVersion}.", result.ErrorDetails, _window);
+            }
+        }
+        catch (Exception ex)
+        {
+            _windowSystem.LogService.LogError($"Error changing package version: {ex.Message}", ex, "Actions");
+            await ErrorModal.ShowAsync(_windowSystem, "Error",
+                "An error occurred while changing package version.", ex.Message, _window);
+        }
+    }
+
     private async Task HandleUpdateAllAsync(ProjectInfo project)
     {
         if (_cliService == null) return;
@@ -1062,6 +1255,16 @@ public class LazyNuGetWindow : IDisposable
         var updated = await _parserService.ParseProjectAsync(project.FilePath);
         if (updated == null) return;
 
+        // Preserve LatestVersion from old packages (not stored in .csproj)
+        foreach (var newPkg in updated.Packages)
+        {
+            var oldPkg = project.Packages.FirstOrDefault(p => p.Id == newPkg.Id);
+            if (oldPkg != null)
+            {
+                newPkg.LatestVersion = oldPkg.LatestVersion;
+            }
+        }
+
         // Replace in the projects list
         var index = _projects.FindIndex(p => p.FilePath == project.FilePath);
         if (index >= 0)
@@ -1122,25 +1325,14 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_detailsPanel == null) return;
 
-        // Clear any multi-control content from UpdateDetailsPanel
-        foreach (var control in _currentDetailControls)
-        {
-            _detailsPanel.RemoveControl(control);
-        }
-        _currentDetailControls.Clear();
-
-        // Also remove single-content control if it wasn't in the list
-        if (_detailsContent != null)
-        {
-            _detailsPanel.RemoveControl(_detailsContent);
-        }
+        // Clear all previous content
+        _detailsPanel.ClearContents();
 
         // Build and add new content
         var builder = Controls.Markup();
         foreach (var line in lines) builder.AddLine(line);
         _detailsContent = builder.WithMargin(1, 1, 1, 1).Build();
         _detailsPanel.AddControl(_detailsContent);
-        _currentDetailControls.Add(_detailsContent);
         _detailsPanel.ScrollToTop();
     }
 
@@ -1148,18 +1340,13 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_detailsPanel == null) return;
 
-        // Remove all previously added controls
-        foreach (var control in _currentDetailControls)
-        {
-            _detailsPanel.RemoveControl(control);
-        }
-        _currentDetailControls.Clear();
+        // Clear all previous content
+        _detailsPanel.ClearContents();
 
         // Add all new controls
         foreach (var control in controls)
         {
             _detailsPanel.AddControl(control);
-            _currentDetailControls.Add(control);
         }
 
         // Keep track of the first control as _detailsContent for backward compatibility
@@ -1171,64 +1358,20 @@ public class LazyNuGetWindow : IDisposable
     {
         return _currentViewState switch
         {
-            ViewState.Projects => "[grey70]←→:Panel  Enter:View Packages  Ctrl+S:Search  Ctrl+O:Open Folder  Ctrl+R:Reload  Esc:Exit[/]",
-            ViewState.Packages => "[grey70]←→:Panel  Esc:Back  Ctrl+U:Update  Ctrl+X:Remove  Ctrl+S:Search[/]",
-            ViewState.Search => "[grey70]←→:Panel  Esc:Cancel  Enter:Install  ↑↓:Navigate[/]",
+            ViewState.Projects => "[grey50]←→[/][grey70]:Panel  [/][grey50]Enter[/][grey70]:View Packages  [/][grey50]Ctrl+S[/][grey70]:Search  [/][grey50]Ctrl+O[/][grey70]:Open Folder  [/][grey50]Ctrl+R[/][grey70]:Reload  [/][grey50]Ctrl+L[/][grey70]:Logs  [/][grey50]Esc[/][grey70]:Exit[/]",
+            ViewState.Packages => "[grey50]←→[/][grey70]:Panel  [/][grey50]Esc[/][grey70]:Back  [/][grey50]Ctrl+U[/][grey70]:Update  [/][grey50]Ctrl+X[/][grey70]:Remove  [/][grey50]Ctrl+S[/][grey70]:Search  [/][grey50]Ctrl+L[/][grey70]:Logs[/]",
+            ViewState.Search => "[grey50]←→[/][grey70]:Panel  [/][grey50]Esc[/][grey70]:Cancel  [/][grey50]Enter[/][grey70]:Install  [/][grey50]↑↓[/][grey70]:Navigate  [/][grey50]Ctrl+L[/][grey70]:Logs[/]",
             _ => "[grey70]?:Help[/]"
         };
     }
 
-    /// <summary>
-    /// Updates the left and right panel headers to indicate which panel is focused.
-    /// Focused panel gets a highlighted title, unfocused panel gets a dimmed title.
-    /// </summary>
-    private void UpdatePanelFocusIndicators()
+    private void ShowLogViewer()
     {
-        bool rightFocused = DetailsAreaHasFocus();
-        bool leftFocused = _contextList?.HasFocus == true;
-
-        // Compute titles based on current view state
-        var leftTitle = _currentViewState switch
-        {
-            ViewState.Projects => "Projects",
-            ViewState.Packages when _selectedProject != null => $"{Markup.Escape(_selectedProject.Name)} › Packages",
-            ViewState.Search => "Install Package",
-            _ => "Projects"
-        };
-        var rightTitle = _currentViewState switch
-        {
-            ViewState.Projects => "Dashboard",
-            _ => "Details"
-        };
-
-        // Style: focused = bold primary color with arrow indicator, unfocused = dimmed
-        var leftStyled = leftFocused
-            ? $"[{ColorScheme.PrimaryMarkup} bold]▸ {leftTitle}[/]"
-            : $"[grey50]{leftTitle}[/]";
-        var rightStyled = rightFocused
-            ? $"[{ColorScheme.PrimaryMarkup} bold]▸ {rightTitle}[/]"
-            : $"[grey50]{rightTitle}[/]";
-
-        _leftPanelHeader?.SetContent(new List<string> { leftStyled });
-        _rightPanelHeader?.SetContent(new List<string> { rightStyled });
+        // Create fresh log viewer on demand (constructor builds UI and shows it)
+        _logViewer = new LogViewerWindow(_windowSystem);
     }
 
-    /// <summary>
-    /// Returns true if the details panel or any interactive control inside it has focus.
-    /// Used to avoid redirecting arrow keys to the context list while the user scrolls
-    /// or navigates buttons in the right panel.
-    /// </summary>
-    private bool DetailsAreaHasFocus()
-    {
-        if (_detailsPanel is IInteractiveControl panelCtrl && panelCtrl.HasFocus)
-            return true;
-        foreach (var ctrl in _currentDetailControls)
-        {
-            if (ctrl is IInteractiveControl interactive && interactive.HasFocus)
-                return true;
-        }
-        return false;
-    }
+    // UpdatePanelFocusIndicators method removed - panel title highlighting feature disabled
 
     private string GetStatusRightText()
     {
