@@ -40,6 +40,9 @@ class Program
                     )
                 ));
 
+            // Set default log level to Information
+            windowSystem.LogService.MinimumLevel = SharpConsoleUI.Logging.LogLevel.Information;
+
             using var mainWindow = new LazyNuGetWindow(windowSystem, folderPath, configService);
             mainWindow.Show();
             await Task.Run(() => windowSystem.Run());

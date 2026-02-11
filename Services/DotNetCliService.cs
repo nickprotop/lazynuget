@@ -73,6 +73,9 @@ public class DotNetCliService
     {
         try
         {
+            // Log the full command before execution
+            _logService?.LogInfo($"Executing: dotnet {arguments}", "CLI");
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = "dotnet",
@@ -97,7 +100,20 @@ public class DotNetCliService
 
             if (process.ExitCode == 0)
             {
-                _logService?.LogInfo($"Command succeeded: dotnet {arguments}", "CLI");
+                _logService?.LogInfo($"Command succeeded (exit 0)", "CLI");
+
+                // Log stdout output if present
+                if (!string.IsNullOrWhiteSpace(stdout))
+                {
+                    _logService?.LogDebug($"Output: {stdout.Trim()}", "CLI");
+                }
+
+                // Check for warnings in stderr even on success
+                if (!string.IsNullOrWhiteSpace(stderr))
+                {
+                    _logService?.LogWarning($"Warnings: {stderr.Trim()}", "CLI");
+                }
+
                 return OperationResult.FromSuccess(stdout.Trim());
             }
 
