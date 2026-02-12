@@ -2,10 +2,19 @@ using System.Text.Json;
 
 namespace LazyNuGet.Services;
 
+public class CustomNuGetSource
+{
+    public string Name { get; set; } = string.Empty;
+    public string Url { get; set; } = string.Empty;
+    public bool IsEnabled { get; set; } = true;
+}
+
 public class LazyNuGetSettings
 {
     public string? LastFolderPath { get; set; }
     public List<string> RecentFolders { get; set; } = new();
+    public List<CustomNuGetSource> CustomSources { get; set; } = new();
+    public Dictionary<string, bool> SourceOverrides { get; set; } = new();
 }
 
 /// <summary>

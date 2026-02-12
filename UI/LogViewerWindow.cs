@@ -80,6 +80,8 @@ public class LogViewerWindow
 
     private void SubscribeToLogs()
     {
+        // Load existing log buffer first
+        RefreshLogDisplay();
         _windowSystem.LogService.LogAdded += OnLogAdded;
     }
 

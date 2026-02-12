@@ -235,6 +235,29 @@ public static class InteractivePackageDetailsBuilder
             }
         }
 
+        if (nugetData.Dependencies.Any())
+        {
+            builder.AddEmptyLine();
+            builder.AddLine($"[grey70 bold]Dependencies:[/]");
+
+            foreach (var group in nugetData.Dependencies)
+            {
+                if (nugetData.Dependencies.Count > 1)
+                {
+                    builder.AddLine($"[grey50]  {Markup.Escape(group.TargetFramework)}:[/]");
+                }
+                foreach (var dep in group.Packages.Take(10))
+                {
+                    var range = string.IsNullOrEmpty(dep.VersionRange) ? "" : $" ({Markup.Escape(dep.VersionRange)})";
+                    builder.AddLine($"[grey70]    {Markup.Escape(dep.Id)}[/][grey50]{range}[/]");
+                }
+                if (group.Packages.Count > 10)
+                {
+                    builder.AddLine($"[grey50]    ... and {group.Packages.Count - 10} more[/]");
+                }
+            }
+        }
+
         builder.AddEmptyLine();
 
         return builder.WithMargin(1, 0, 0, 0).Build();

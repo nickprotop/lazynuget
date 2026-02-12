@@ -6,10 +6,14 @@ on:
       - 'v*'
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+
+    strategy:
+      matrix:
+        rid: [linux-x64, linux-arm64, osx-x64, osx-arm64, win-x64, win-arm64]
 
     steps:
       - name: Checkout code
@@ -20,70 +24,93 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Build self-contained binary for linux-x64
+      - name: Publish
+        env:
+          RID: ${{ matrix.rid }}
         run: |
           dotnet publish -c Release \
-            -r linux-x64 \
+            -r "$RID" \
             --self-contained true \
             -p:PublishSingleFile=true \
-            -o ./publish/linux-x64
+            -o ./publish/"$RID"
 
-      - name: Build self-contained binary for linux-arm64
+      - name: Rename binary
+        env:
+          RID: ${{ matrix.rid }}
         run: |
-          dotnet publish -c Release \
-            -r linux-arm64 \
-            --self-contained true \
-            -p:PublishSingleFile=true \
-            -o ./publish/linux-arm64
+          cd publish/"$RID"
+          if [[ "$RID" == win-* ]]; then
+            mv LazyNuGet.exe "lazynuget-${RID}.exe"
+          else
+            mv LazyNuGet "lazynuget-${RID}"
+            chmod +x "lazynuget-${RID}"
+          fi
 
-      - name: Rename binaries
-        run: |
-          mv ./publish/linux-x64/LazyNuGet ./publish/lazynuget-linux-x64
-          mv ./publish/linux-arm64/LazyNuGet ./publish/lazynuget-linux-arm64
-          chmod +x ./publish/lazynuget-*
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.rid }}
+          path: publish/${{ matrix.rid }}/lazynuget-*
 
-      - name: Copy install and uninstall scripts
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: publish
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Copy scripts
         run: |
           cp install.sh ./publish/install.sh
           cp uninstall.sh ./publish/uninstall.sh
+          cp install.ps1 ./publish/install.ps1
+          cp uninstall.ps1 ./publish/uninstall.ps1
           chmod +x ./publish/install.sh
           chmod +x ./publish/uninstall.sh
 
       - name: Generate checksums
         run: |
           cd publish
-          sha256sum lazynuget-linux-x64 > SHA256SUMS
+          sha256sum lazynuget-linux-x64 >> SHA256SUMS
           sha256sum lazynuget-linux-arm64 >> SHA256SUMS
+          sha256sum lazynuget-osx-x64 >> SHA256SUMS
+          sha256sum lazynuget-osx-arm64 >> SHA256SUMS
+          sha256sum lazynuget-win-x64.exe >> SHA256SUMS
+          sha256sum lazynuget-win-arm64.exe >> SHA256SUMS
           cd ..
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog
         id: changelog
         run: |
-          # Get current tag from ref
           CURRENT_TAG=${GITHUB_REF#refs/tags/}
-
-          # Fetch all tags
           git fetch --tags --force
-
-          # Get previous tag (second most recent)
           PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${CURRENT_TAG}$" | head -n 1)
 
           if [ -z "$PREV_TAG" ]; then
-            # First release - get all commits
             CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
           else
-            # Get commits since last tag
-            CHANGELOG=$(git log ${PREV_TAG}..${CURRENT_TAG} --pretty=format:"- %s (%h)" --no-merges)
+            CHANGELOG=$(git log "${PREV_TAG}..${CURRENT_TAG}" --pretty=format:"- %s (%h)" --no-merges)
           fi
 
-          # Save changelog to output
-          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "CHANGELOG<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -91,8 +118,14 @@ jobs:
           files: |
             publish/lazynuget-linux-x64
             publish/lazynuget-linux-arm64
+            publish/lazynuget-osx-x64
+            publish/lazynuget-osx-arm64
+            publish/lazynuget-win-x64.exe
+            publish/lazynuget-win-arm64.exe
             publish/install.sh
             publish/uninstall.sh
+            publish/install.ps1
+            publish/uninstall.ps1
             publish/SHA256SUMS
           body: |
             # LazyNuGet ${{ steps.version.outputs.VERSION }}
@@ -101,20 +134,32 @@ jobs:
 
             ## Installation
 
-            **Quick Install (Recommended):**
+            ### Linux
             ```bash
             curl -fsSL https://raw.githubusercontent.com/nickprotop/lazynuget/main/install.sh | bash
             ```
 
-            **Manual Install:**
-            1. Download the binary for your architecture:
-               - `lazynuget-linux-x64` for Intel/AMD (x86_64)
-               - `lazynuget-linux-arm64` for ARM (Raspberry Pi, etc.)
-            2. Make executable and move to PATH:
+            ### macOS
             ```bash
-            chmod +x lazynuget-linux-x64
-            sudo mv lazynuget-linux-x64 /usr/local/bin/lazynuget
+            curl -fsSL https://raw.githubusercontent.com/nickprotop/lazynuget/main/install.sh | bash
             ```
+            > If macOS blocks the binary, run: `xattr -d com.apple.quarantine $(which lazynuget)`
+
+            ### Windows (PowerShell)
+            ```powershell
+            irm https://raw.githubusercontent.com/nickprotop/lazynuget/main/install.ps1 | iex
+            ```
+
+            ### Manual Install
+            Download the binary for your platform:
+            | Platform | Binary |
+            |----------|--------|
+            | Linux x64 | `lazynuget-linux-x64` |
+            | Linux ARM64 | `lazynuget-linux-arm64` |
+            | macOS x64 (Intel) | `lazynuget-osx-x64` |
+            | macOS ARM64 (Apple Silicon) | `lazynuget-osx-arm64` |
+            | Windows x64 | `lazynuget-win-x64.exe` |
+            | Windows ARM64 | `lazynuget-win-arm64.exe` |
 
             ## What's Changed
 

@@ -54,6 +54,7 @@ public class LazyNuGetWindow : IDisposable
     private DotNetCliService? _cliService;
     private ConfigurationService? _configService;
     private OperationHistoryService? _historyService;
+    private NuGetConfigService? _nugetConfigService;
 
     public LazyNuGetWindow(ConsoleWindowSystem windowSystem, string folderPath, ConfigurationService? configService = null)
     {
@@ -64,8 +65,11 @@ public class LazyNuGetWindow : IDisposable
         // Initialize services
         _discoveryService = new ProjectDiscoveryService();
         _parserService = new ProjectParserService(_windowSystem.LogService);
-        _nugetService = new NuGetClientService(_windowSystem.LogService);
+        _nugetConfigService = new NuGetConfigService(_windowSystem.LogService);
         _cliService = new DotNetCliService(_windowSystem.LogService);
+
+        // Resolve NuGet sources from config hierarchy and create client
+        _nugetService = CreateNuGetClientService();
 
         // Initialize operation history service
         var configDir = Path.Combine(
@@ -79,6 +83,44 @@ public class LazyNuGetWindow : IDisposable
 
         // Load projects asynchronously
         _ = LoadProjectsAsync();
+    }
+
+    private NuGetClientService CreateNuGetClientService()
+    {
+        var sources = _nugetConfigService?.GetEffectiveSources(_currentFolderPath) ?? new List<NuGetSource>();
+
+        // Merge custom sources from LazyNuGet settings
+        var settings = _configService?.Load();
+        if (settings?.CustomSources != null)
+        {
+            foreach (var custom in settings.CustomSources)
+            {
+                // Check for override (enable/disable)
+                var isEnabled = custom.IsEnabled;
+                if (settings.SourceOverrides.TryGetValue(custom.Name, out var overrideEnabled))
+                    isEnabled = overrideEnabled;
+
+                sources.Add(new NuGetSource
+                {
+                    Name = custom.Name,
+                    Url = custom.Url,
+                    IsEnabled = isEnabled,
+                    Origin = NuGetSourceOrigin.LazyNuGetSettings
+                });
+            }
+        }
+
+        // Apply source overrides from settings to NuGet.config sources
+        if (settings?.SourceOverrides != null)
+        {
+            foreach (var source in sources)
+            {
+                if (settings.SourceOverrides.TryGetValue(source.Name, out var enabled))
+                    source.IsEnabled = enabled;
+            }
+        }
+
+        return new NuGetClientService(_windowSystem.LogService, sources.Count > 0 ? sources : null);
     }
 
     public void Show()
@@ -396,6 +438,34 @@ public class LazyNuGetWindow : IDisposable
                 }
                 e.Handled = true;
             }
+            // Ctrl+P - Settings
+            else if (e.KeyInfo.Key == ConsoleKey.P && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                _ = ShowSettingsAsync();
+                e.Handled = true;
+            }
+            // Ctrl+D - Dependency tree
+            else if (e.KeyInfo.Key == ConsoleKey.D && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                ProjectInfo? targetProject = null;
+                PackageReference? targetPackage = null;
+
+                if (_currentViewState == ViewState.Packages && _selectedProject != null)
+                {
+                    targetProject = _selectedProject;
+                    targetPackage = _contextList?.SelectedItem?.Tag as PackageReference;
+                }
+                else if (_currentViewState == ViewState.Projects && _contextList?.SelectedItem?.Tag is ProjectInfo proj)
+                {
+                    targetProject = proj;
+                }
+
+                if (targetProject != null)
+                {
+                    _ = ShowDependencyTreeAsync(targetProject, targetPackage);
+                }
+                e.Handled = true;
+            }
             // Ctrl+L - Show log viewer
             else if (e.KeyInfo.Key == ConsoleKey.L && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
@@ -442,6 +512,10 @@ public class LazyNuGetWindow : IDisposable
         {
             // Persist the current folder for next launch
             _configService?.TrackFolder(_currentFolderPath);
+
+            // Re-resolve NuGet sources for the new project directory
+            _nugetService?.Dispose();
+            _nugetService = CreateNuGetClientService();
 
             // Show loading feedback with progress bar
             ShowLoadingPanel("Discovering projects...", $"Scanning {Markup.Escape(_currentFolderPath)}");
@@ -882,6 +956,30 @@ public class LazyNuGetWindow : IDisposable
 
         // Switch to search results view with the selected package
         SwitchToSearchResultsView(selectedPackage);
+    }
+
+    private async Task ShowSettingsAsync()
+    {
+        if (_configService == null || _nugetConfigService == null || _nugetService == null) return;
+
+        var changed = await SettingsModal.ShowAsync(
+            _windowSystem, _configService, _nugetConfigService, _nugetService, _currentFolderPath, _window);
+
+        if (changed)
+        {
+            // Reinitialize NuGet client with updated sources
+            _nugetService?.Dispose();
+            _nugetService = CreateNuGetClientService();
+
+            // Reload projects to refresh package status
+            await LoadProjectsAsync();
+        }
+    }
+
+    private async Task ShowDependencyTreeAsync(ProjectInfo project, PackageReference? selectedPackage = null)
+    {
+        if (_cliService == null || _nugetService == null) return;
+        await DependencyTreeModal.ShowAsync(_windowSystem, _cliService, _nugetService, project, selectedPackage, _window);
     }
 
     private async Task ShowOperationHistoryAsync()
@@ -1396,9 +1494,9 @@ public class LazyNuGetWindow : IDisposable
 
         return _currentViewState switch
         {
-            ViewState.Projects => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+O[/][grey70]:Open  [/][cyan1]Ctrl+R[/][grey70]:Reload  [/][cyan1]Esc[/][grey70]:Exit[/]",
-            ViewState.Packages => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Esc[/][grey70]:Back  [/][cyan1]Ctrl+U[/][grey70]:Update  [/][cyan1]Ctrl+X[/][grey70]:Remove  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
-            ViewState.Search => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:Install  [/][cyan1]Esc[/][grey70]:Cancel  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
+            ViewState.Projects => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+D[/][grey70]:Deps  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+O[/][grey70]:Open  [/][cyan1]Ctrl+R[/][grey70]:Reload  [/][cyan1]Esc[/][grey70]:Exit[/]",
+            ViewState.Packages => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Esc[/][grey70]:Back  [/][cyan1]Ctrl+U[/][grey70]:Update  [/][cyan1]Ctrl+X[/][grey70]:Remove  [/][cyan1]Ctrl+D[/][grey70]:Deps  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
+            ViewState.Search => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:Install  [/][cyan1]Esc[/][grey70]:Cancel  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
             _ => "[grey70]?:Help[/]"
         };
     }

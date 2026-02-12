@@ -144,6 +144,101 @@ public class DotNetCliService
         return OperationResult.FromSuccess(summary);
     }
 
+    /// <summary>
+    /// List all packages (including transitive) for a project
+    /// </summary>
+    public async Task<List<ProjectDependencyTree>> ListTransitiveDependenciesAsync(
+        string projectPath,
+        CancellationToken cancellationToken = default)
+    {
+        var args = $"list \"{projectPath}\" package --include-transitive";
+        _logService?.LogInfo($"Listing transitive dependencies for {Path.GetFileNameWithoutExtension(projectPath)}", "CLI");
+
+        var result = await RunDotNetCommandAsync(args, cancellationToken);
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Message))
+            return new List<ProjectDependencyTree>();
+
+        return ParseTransitiveDependencyOutput(result.Message, projectPath);
+    }
+
+    private static List<ProjectDependencyTree> ParseTransitiveDependencyOutput(string output, string projectPath)
+    {
+        var trees = new List<ProjectDependencyTree>();
+        var lines = output.Split('\n', StringSplitOptions.None);
+
+        ProjectDependencyTree? currentTree = null;
+        bool inTopLevel = false;
+        bool inTransitive = false;
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.TrimEnd();
+
+            // Detect framework section: [net9.0]:
+            if (line.TrimStart().StartsWith("[") && line.TrimEnd().EndsWith("]:"))
+            {
+                var framework = line.Trim().TrimStart('[').TrimEnd(':', ']');
+                currentTree = new ProjectDependencyTree
+                {
+                    ProjectName = Path.GetFileNameWithoutExtension(projectPath),
+                    TargetFramework = framework
+                };
+                trees.Add(currentTree);
+                inTopLevel = false;
+                inTransitive = false;
+                continue;
+            }
+
+            if (currentTree == null) continue;
+
+            // Detect section headers
+            if (line.Contains("Top-level Package"))
+            {
+                inTopLevel = true;
+                inTransitive = false;
+                continue;
+            }
+            if (line.Contains("Transitive Package"))
+            {
+                inTopLevel = false;
+                inTransitive = true;
+                continue;
+            }
+
+            // Parse package lines (start with > or whitespace followed by >)
+            var trimmed = line.TrimStart();
+            if (!trimmed.StartsWith(">")) continue;
+
+            // Remove the leading "> " marker
+            var packageLine = trimmed.Substring(1).Trim();
+            var parts = packageLine.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+            if (inTopLevel && parts.Length >= 3)
+            {
+                // Top-level: PackageName  RequestedVersion  ResolvedVersion
+                currentTree.TopLevelPackages.Add(new DependencyNode
+                {
+                    PackageId = parts[0],
+                    RequestedVersion = parts[1],
+                    ResolvedVersion = parts[2],
+                    IsTransitive = false
+                });
+            }
+            else if (inTransitive && parts.Length >= 2)
+            {
+                // Transitive: PackageName  ResolvedVersion
+                currentTree.TransitivePackages.Add(new DependencyNode
+                {
+                    PackageId = parts[0],
+                    ResolvedVersion = parts[1],
+                    IsTransitive = true
+                });
+            }
+        }
+
+        return trees;
+    }
+
     private async Task<OperationResult> RunDotNetCommandAsync(
         string arguments,
         CancellationToken cancellationToken = default,

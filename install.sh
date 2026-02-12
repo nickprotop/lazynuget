@@ -1,35 +1,70 @@
 #!/bin/bash
 # LazyNuGet Quick Install Script
 # Downloads and installs the latest release from GitHub
+# Supports Linux and macOS (x64 and ARM64)
 # Copyright (c) Nikolaos Protopapas. All rights reserved.
 # Licensed under the MIT License.
 
 set -e
 
-INSTALL_DIR="$HOME/.local"
 REPO="nickprotop/lazynuget"
 
 echo "Installing LazyNuGet from latest release..."
 echo ""
 
-# 1. Detect architecture
+# 1. Detect OS and architecture
+OS=$(uname -s)
 ARCH=$(uname -m)
-case "$ARCH" in
-    x86_64)
-        BINARY_NAME="lazynuget-linux-x64"
+
+case "$OS" in
+    Linux)
+        case "$ARCH" in
+            x86_64)
+                BINARY_NAME="lazynuget-linux-x64"
+                ;;
+            aarch64|arm64)
+                BINARY_NAME="lazynuget-linux-arm64"
+                ;;
+            *)
+                echo "Error: Unsupported architecture: $ARCH"
+                echo "Supported: x86_64, aarch64/arm64"
+                exit 1
+                ;;
+        esac
+        INSTALL_DIR="$HOME/.local"
         ;;
-    aarch64|arm64)
-        BINARY_NAME="lazynuget-linux-arm64"
+    Darwin)
+        case "$ARCH" in
+            x86_64)
+                BINARY_NAME="lazynuget-osx-x64"
+                ;;
+            arm64)
+                BINARY_NAME="lazynuget-osx-arm64"
+                ;;
+            *)
+                echo "Error: Unsupported architecture: $ARCH"
+                echo "Supported: x86_64, arm64"
+                exit 1
+                ;;
+        esac
+        # Prefer /usr/local/bin on macOS, fall back to ~/.local/bin
+        if [ -w /usr/local/bin ]; then
+            INSTALL_DIR="/usr/local"
+        else
+            INSTALL_DIR="$HOME/.local"
+        fi
         ;;
     *)
-        echo "Error: Unsupported architecture: $ARCH"
-        echo "Supported: x86_64, aarch64/arm64"
+        echo "Error: Unsupported operating system: $OS"
+        echo "Supported: Linux, macOS (Darwin)"
+        echo "For Windows, use install.ps1 instead."
         exit 1
         ;;
 esac
 
-echo "Detected architecture: $ARCH"
+echo "Detected OS: $OS ($ARCH)"
 echo "Binary to download: $BINARY_NAME"
+echo "Install directory: $INSTALL_DIR/bin"
 echo ""
 
 # 2. Get latest release info
@@ -65,7 +100,13 @@ chmod +x "/tmp/lazynuget"
 mv "/tmp/lazynuget" "$INSTALL_DIR/bin/lazynuget"
 echo "✓ Installed binary to $INSTALL_DIR/bin/lazynuget"
 
-# 6. Download and install uninstaller
+# 6. macOS: Clear Gatekeeper quarantine flag
+if [ "$OS" = "Darwin" ]; then
+    xattr -d com.apple.quarantine "$INSTALL_DIR/bin/lazynuget" 2>/dev/null || true
+    echo "✓ Cleared macOS Gatekeeper quarantine flag"
+fi
+
+# 7. Download and install uninstaller
 echo "Downloading uninstaller..."
 if curl -L -f -o "/tmp/lazynuget-uninstall" "$UNINSTALL_URL" 2>/dev/null; then
     chmod +x "/tmp/lazynuget-uninstall"
@@ -75,26 +116,39 @@ else
     echo "Warning: Could not download uninstaller (non-critical)"
 fi
 
-# 7. Add to PATH if needed
+# 8. Add to PATH if needed
 PATH_ADDED=false
 if ! echo "$PATH" | grep -q "$INSTALL_DIR/bin"; then
     echo ""
-    if [ -f "$HOME/.bashrc" ]; then
-        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
-        echo "✓ Added ~/.local/bin to PATH in ~/.bashrc"
-        SHELL_RC="$HOME/.bashrc"
-        PATH_ADDED=true
-    elif [ -f "$HOME/.zshrc" ]; then
-        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
-        echo "✓ Added ~/.local/bin to PATH in ~/.zshrc"
-        SHELL_RC="$HOME/.zshrc"
+
+    # Determine the shell config file
+    SHELL_RC=""
+    if [ "$OS" = "Darwin" ]; then
+        # macOS: prefer .zshrc (default shell since Catalina), then .bash_profile
+        if [ -f "$HOME/.zshrc" ]; then
+            SHELL_RC="$HOME/.zshrc"
+        elif [ -f "$HOME/.bash_profile" ]; then
+            SHELL_RC="$HOME/.bash_profile"
+        fi
+    else
+        # Linux: prefer .bashrc, then .zshrc
+        if [ -f "$HOME/.bashrc" ]; then
+            SHELL_RC="$HOME/.bashrc"
+        elif [ -f "$HOME/.zshrc" ]; then
+            SHELL_RC="$HOME/.zshrc"
+        fi
+    fi
+
+    if [ -n "$SHELL_RC" ]; then
+        echo "export PATH=\"$INSTALL_DIR/bin:\$PATH\"" >> "$SHELL_RC"
+        echo "✓ Added $INSTALL_DIR/bin to PATH in $SHELL_RC"
         PATH_ADDED=true
     else
-        echo "Warning: Could not detect shell config file (.bashrc or .zshrc)"
-        echo "         Add manually: export PATH=\"\$HOME/.local/bin:\$PATH\""
+        echo "Warning: Could not detect shell config file"
+        echo "         Add manually: export PATH=\"$INSTALL_DIR/bin:\$PATH\""
     fi
 else
-    echo "✓ ~/.local/bin is already in PATH"
+    echo "✓ $INSTALL_DIR/bin is already in PATH"
 fi
 
 echo ""
@@ -110,7 +164,7 @@ if [ "$PATH_ADDED" = true ]; then
     echo ""
     echo "Or run directly with the full path:"
     echo ""
-    echo "  ~/.local/bin/lazynuget"
+    echo "  $INSTALL_DIR/bin/lazynuget"
     echo ""
 else
     echo "Run 'lazynuget' to get started!"

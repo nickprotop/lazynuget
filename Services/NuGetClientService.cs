@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LazyNuGet.Models;
@@ -8,17 +11,32 @@ using NuGet.Versioning;
 namespace LazyNuGet.Services;
 
 /// <summary>
-/// Service for interacting with NuGet.org API v3
+/// Resolved endpoints for a NuGet V3 feed
+/// </summary>
+internal class FeedEndpoints
+{
+    public string SearchQueryService { get; set; } = string.Empty;
+    public string RegistrationBaseUrl { get; set; } = string.Empty;
+    public string PackageBaseAddress { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Service for interacting with NuGet API v3, supporting multiple feed sources
 /// </summary>
 public class NuGetClientService : IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly ILogService? _logService;
-    private const string SearchBaseUrl = "https://azuresearch-usnc.nuget.org/query";
-    private const string RegistrationBaseUrl = "https://api.nuget.org/v3/registration5-semver1";
-    private const string FlatContainerBaseUrl = "https://api.nuget.org/v3-flatcontainer";
+    private readonly List<NuGetSource> _sources;
+    private readonly ConcurrentDictionary<string, FeedEndpoints> _endpointCache = new();
 
-    public NuGetClientService(ILogService? logService = null)
+    // Hardcoded nuget.org endpoints (fast path — skip service index resolution)
+    private const string NuGetOrgSearchUrl = "https://azuresearch-usnc.nuget.org/query";
+    private const string NuGetOrgRegistrationUrl = "https://api.nuget.org/v3/registration5-semver1";
+    private const string NuGetOrgFlatContainerUrl = "https://api.nuget.org/v3-flatcontainer";
+    private const string NuGetOrgUrl = "https://api.nuget.org/v3/index.json";
+
+    public NuGetClientService(ILogService? logService = null, List<NuGetSource>? sources = null)
     {
         _logService = logService;
         _httpClient = new HttpClient
@@ -26,40 +44,75 @@ public class NuGetClientService : IDisposable
             Timeout = TimeSpan.FromSeconds(10)
         };
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "LazyNuGet/1.0");
+
+        // Default to nuget.org if no sources provided
+        _sources = sources ?? new List<NuGetSource>
+        {
+            new NuGetSource
+            {
+                Name = "nuget.org",
+                Url = NuGetOrgUrl,
+                IsEnabled = true,
+                Origin = NuGetSourceOrigin.NuGetConfig
+            }
+        };
+
+        // Ensure at least nuget.org is present
+        if (!_sources.Any(s => s.IsEnabled))
+        {
+            _logService?.LogWarning("No enabled NuGet sources, defaulting to nuget.org", "NuGet");
+            _sources.Add(new NuGetSource
+            {
+                Name = "nuget.org",
+                Url = NuGetOrgUrl,
+                IsEnabled = true,
+                Origin = NuGetSourceOrigin.NuGetConfig
+            });
+        }
     }
 
     /// <summary>
-    /// Search for packages on NuGet.org
+    /// Get the list of active sources (for display in settings)
+    /// </summary>
+    public IReadOnlyList<NuGetSource> Sources => _sources.AsReadOnly();
+
+    /// <summary>
+    /// Search for packages across all enabled feeds
     /// </summary>
     public async Task<List<NuGetPackage>> SearchPackagesAsync(string query, int take = 20, CancellationToken cancellationToken = default)
     {
         try
         {
-            var url = $"{SearchBaseUrl}?q={Uri.EscapeDataString(query)}&take={take}";
-            var response = await _httpClient.GetFromJsonAsync<NuGetSearchResponse>(url, cancellationToken);
+            var enabledSources = _sources.Where(s => s.IsEnabled).ToList();
+            var allResults = new ConcurrentBag<NuGetPackage>();
 
-            if (response?.Data == null)
-                return new List<NuGetPackage>();
-
-            return response.Data.Select(d => new NuGetPackage
+            // Fan out search to all enabled feeds in parallel
+            var tasks = enabledSources.Select(source => Task.Run(async () =>
             {
-                Id = d.Id ?? string.Empty,
-                Version = d.Version ?? string.Empty,
-                Description = d.Description ?? string.Empty,
-                TotalDownloads = d.TotalDownloads,
-                ProjectUrl = d.ProjectUrl,
-                LicenseUrl = d.LicenseUrl,
-                LicenseExpression = d.LicenseExpression,
-                RepositoryUrl = d.RepositoryUrl,
-                Authors = d.Authors ?? new List<string>(),
-                Tags = d.Tags ?? new List<string>(),
-                Versions = d.Versions?.Select(v => v.Version ?? string.Empty).ToList() ?? new List<string>(),
-                IsVerified = d.Verified,
-                VulnerabilityCount = d.Vulnerabilities?.Count ?? 0,
-                IsDeprecated = d.Deprecation != null,
-                DeprecationMessage = d.Deprecation?.Message,
-                AlternatePackageId = d.Deprecation?.AlternatePackage?.Id
-            }).ToList();
+                try
+                {
+                    var results = await SearchPackagesOnSourceAsync(source, query, take, cancellationToken);
+                    foreach (var pkg in results)
+                    {
+                        allResults.Add(pkg);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logService?.LogWarning($"Search failed on source '{source.Name}': {ex.Message}", "NuGet");
+                }
+            }, cancellationToken));
+
+            await Task.WhenAll(tasks);
+
+            // Deduplicate by package ID (prefer highest version)
+            return allResults
+                .GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.OrderByDescending(p =>
+                    NuGetVersion.TryParse(p.Version, out var v) ? v : new NuGetVersion(0, 0, 0))
+                    .First())
+                .Take(take)
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -68,110 +121,182 @@ public class NuGetClientService : IDisposable
         }
     }
 
+    private async Task<List<NuGetPackage>> SearchPackagesOnSourceAsync(
+        NuGetSource source, string query, int take, CancellationToken cancellationToken)
+    {
+        var endpoints = await ResolveEndpointsAsync(source, cancellationToken);
+        var url = $"{endpoints.SearchQueryService}?q={Uri.EscapeDataString(query)}&take={take}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        ApplyAuth(request, source);
+
+        var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+        httpResponse.EnsureSuccessStatusCode();
+        var response = await httpResponse.Content.ReadFromJsonAsync<NuGetSearchResponse>(cancellationToken: cancellationToken);
+
+        if (response?.Data == null)
+            return new List<NuGetPackage>();
+
+        return response.Data.Select(d => new NuGetPackage
+        {
+            Id = d.Id ?? string.Empty,
+            Version = d.Version ?? string.Empty,
+            Description = d.Description ?? string.Empty,
+            TotalDownloads = d.TotalDownloads,
+            ProjectUrl = d.ProjectUrl,
+            LicenseUrl = d.LicenseUrl,
+            LicenseExpression = d.LicenseExpression,
+            RepositoryUrl = d.RepositoryUrl,
+            Authors = d.Authors ?? new List<string>(),
+            Tags = d.Tags ?? new List<string>(),
+            Versions = d.Versions?.Select(v => v.Version ?? string.Empty).ToList() ?? new List<string>(),
+            IsVerified = d.Verified,
+            VulnerabilityCount = d.Vulnerabilities?.Count ?? 0,
+            IsDeprecated = d.Deprecation != null,
+            DeprecationMessage = d.Deprecation?.Message,
+            AlternatePackageId = d.Deprecation?.AlternatePackage?.Id
+        }).ToList();
+    }
+
     /// <summary>
     /// Get detailed information about a specific package.
-    /// Uses the Search API for metadata and Flat Container API for ALL versions.
+    /// Tries each enabled feed until the package is found.
     /// </summary>
     public async Task<NuGetPackage?> GetPackageDetailsAsync(string packageId, CancellationToken cancellationToken = default)
     {
-        try
+        var enabledSources = _sources.Where(s => s.IsEnabled).ToList();
+
+        foreach (var source in enabledSources)
         {
-            // Use search API with exact packageid filter — returns metadata + versions in one call
-            var url = $"{SearchBaseUrl}?q=packageid:{Uri.EscapeDataString(packageId)}&take=1";
-            var response = await _httpClient.GetFromJsonAsync<NuGetSearchResponse>(url, cancellationToken);
-
-            var data = response?.Data?.FirstOrDefault();
-            if (data == null)
-                return null;
-
-            // Fetch ALL versions from flat container API (no pagination, complete list)
-            List<string> allVersions = new();
             try
             {
-                var flatUrl = $"{FlatContainerBaseUrl}/{packageId.ToLowerInvariant()}/index.json";
-                var flatResponse = await _httpClient.GetFromJsonAsync<FlatContainerResponse>(flatUrl, cancellationToken);
-                if (flatResponse?.Versions != null && flatResponse.Versions.Count > 0)
-                {
-                    // Sort using semantic versioning (descending - newest first)
-                    allVersions = flatResponse.Versions
-                        .Select(v => (version: v, parsed: NuGetVersion.TryParse(v, out var nv) ? nv : null))
-                        .Where(x => x.parsed != null)
-                        .OrderByDescending(x => x.parsed)
-                        .Select(x => x.version)
-                        .ToList();
-                }
+                var result = await GetPackageDetailsOnSourceAsync(source, packageId, cancellationToken);
+                if (result != null)
+                    return result;
             }
             catch (Exception ex)
             {
-                _logService?.LogWarning($"Could not fetch all versions from flat container, using search API versions: {ex.Message}", "NuGet");
-                // Fallback to search API versions if flat container fails
-                allVersions = data.Versions?.Select(v => v.Version ?? string.Empty)
+                _logService?.LogWarning($"Failed to get details from '{source.Name}': {ex.Message}", "NuGet");
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<NuGetPackage?> GetPackageDetailsOnSourceAsync(
+        NuGetSource source, string packageId, CancellationToken cancellationToken)
+    {
+        var endpoints = await ResolveEndpointsAsync(source, cancellationToken);
+
+        // Use search API with exact packageid filter
+        var url = $"{endpoints.SearchQueryService}?q=packageid:{Uri.EscapeDataString(packageId)}&take=1";
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        ApplyAuth(request, source);
+
+        var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+        httpResponse.EnsureSuccessStatusCode();
+        var response = await httpResponse.Content.ReadFromJsonAsync<NuGetSearchResponse>(cancellationToken: cancellationToken);
+
+        var data = response?.Data?.FirstOrDefault();
+        if (data == null)
+            return null;
+
+        // Fetch ALL versions from flat container API
+        List<string> allVersions = new();
+        try
+        {
+            var flatUrl = $"{endpoints.PackageBaseAddress}/{packageId.ToLowerInvariant()}/index.json";
+            using var flatRequest = new HttpRequestMessage(HttpMethod.Get, flatUrl);
+            ApplyAuth(flatRequest, source);
+
+            var flatHttpResponse = await _httpClient.SendAsync(flatRequest, cancellationToken);
+            flatHttpResponse.EnsureSuccessStatusCode();
+            var flatResponse = await flatHttpResponse.Content.ReadFromJsonAsync<FlatContainerResponse>(cancellationToken: cancellationToken);
+
+            if (flatResponse?.Versions != null && flatResponse.Versions.Count > 0)
+            {
+                allVersions = flatResponse.Versions
                     .Select(v => (version: v, parsed: NuGetVersion.TryParse(v, out var nv) ? nv : null))
                     .Where(x => x.parsed != null)
                     .OrderByDescending(x => x.parsed)
                     .Select(x => x.version)
-                    .ToList() ?? new List<string>();
+                    .ToList();
             }
-
-            var package = new NuGetPackage
-            {
-                Id = data.Id ?? packageId,
-                Version = data.Version ?? string.Empty,
-                Description = data.Description ?? string.Empty,
-                ProjectUrl = data.ProjectUrl,
-                LicenseUrl = data.LicenseUrl,
-                LicenseExpression = data.LicenseExpression,
-                RepositoryUrl = data.RepositoryUrl,
-                Authors = data.Authors ?? new List<string>(),
-                Tags = data.Tags ?? new List<string>(),
-                TotalDownloads = data.TotalDownloads,
-                Versions = allVersions,
-                IsVerified = data.Verified,
-                VulnerabilityCount = data.Vulnerabilities?.Count ?? 0,
-                IsDeprecated = data.Deprecation != null,
-                DeprecationMessage = data.Deprecation?.Message,
-                AlternatePackageId = data.Deprecation?.AlternatePackage?.Id
-            };
-
-            // Fetch additional details from registration API (catalog entry)
-            await EnrichPackageWithCatalogDataAsync(package, cancellationToken);
-
-            return package;
         }
         catch (Exception ex)
         {
-            _logService?.LogError($"Error getting package details: {ex.Message}", ex, "NuGet");
-            return null;
+            _logService?.LogWarning($"Could not fetch all versions from flat container: {ex.Message}", "NuGet");
+            allVersions = data.Versions?.Select(v => v.Version ?? string.Empty)
+                .Select(v => (version: v, parsed: NuGetVersion.TryParse(v, out var nv) ? nv : null))
+                .Where(x => x.parsed != null)
+                .OrderByDescending(x => x.parsed)
+                .Select(x => x.version)
+                .ToList() ?? new List<string>();
         }
+
+        var package = new NuGetPackage
+        {
+            Id = data.Id ?? packageId,
+            Version = data.Version ?? string.Empty,
+            Description = data.Description ?? string.Empty,
+            ProjectUrl = data.ProjectUrl,
+            LicenseUrl = data.LicenseUrl,
+            LicenseExpression = data.LicenseExpression,
+            RepositoryUrl = data.RepositoryUrl,
+            Authors = data.Authors ?? new List<string>(),
+            Tags = data.Tags ?? new List<string>(),
+            TotalDownloads = data.TotalDownloads,
+            Versions = allVersions,
+            IsVerified = data.Verified,
+            VulnerabilityCount = data.Vulnerabilities?.Count ?? 0,
+            IsDeprecated = data.Deprecation != null,
+            DeprecationMessage = data.Deprecation?.Message,
+            AlternatePackageId = data.Deprecation?.AlternatePackage?.Id
+        };
+
+        // Fetch additional details from registration API
+        await EnrichPackageWithCatalogDataAsync(source, package, cancellationToken);
+
+        return package;
     }
 
     /// <summary>
-    /// Get the latest stable version of a package using the flat container API.
-    /// This is a simple JSON array of all versions — no pagination.
+    /// Get the latest stable version of a package
     /// </summary>
     public async Task<string?> GetLatestVersionAsync(string packageId, CancellationToken cancellationToken = default)
     {
-        try
+        var enabledSources = _sources.Where(s => s.IsEnabled).ToList();
+
+        foreach (var source in enabledSources)
         {
-            var url = $"{FlatContainerBaseUrl}/{packageId.ToLowerInvariant()}/index.json";
-            var response = await _httpClient.GetFromJsonAsync<FlatContainerResponse>(url, cancellationToken);
+            try
+            {
+                var endpoints = await ResolveEndpointsAsync(source, cancellationToken);
+                var url = $"{endpoints.PackageBaseAddress}/{packageId.ToLowerInvariant()}/index.json";
 
-            if (response?.Versions == null || response.Versions.Count == 0)
-                return null;
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                ApplyAuth(request, source);
 
-            // Filter to stable versions (no prerelease tags like -beta, -rc, -preview)
-            var stable = response.Versions
-                .Where(v => !v.Contains('-'))
-                .ToList();
+                var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+                if (!httpResponse.IsSuccessStatusCode) continue;
 
-            // Return last stable version (flat container returns them in ascending order)
-            return stable.Count > 0 ? stable[^1] : response.Versions[^1];
+                var response = await httpResponse.Content.ReadFromJsonAsync<FlatContainerResponse>(cancellationToken: cancellationToken);
+                if (response?.Versions == null || response.Versions.Count == 0)
+                    continue;
+
+                var stable = response.Versions
+                    .Where(v => !v.Contains('-'))
+                    .ToList();
+
+                return stable.Count > 0 ? stable[^1] : response.Versions[^1];
+            }
+            catch (Exception ex)
+            {
+                _logService?.LogWarning($"Failed to check version on '{source.Name}' for {packageId}: {ex.Message}", "NuGet");
+            }
         }
-        catch (Exception ex)
-        {
-            _logService?.LogError($"Error getting latest version for {packageId}: {ex.Message}", ex, "NuGet");
-            return null;
-        }
+
+        return null;
     }
 
     /// <summary>
@@ -200,33 +325,75 @@ public class NuGetClientService : IDisposable
     /// <summary>
     /// Enriches a package with additional metadata from the registration/catalog API
     /// </summary>
-    private async Task EnrichPackageWithCatalogDataAsync(NuGetPackage package, CancellationToken cancellationToken = default)
+    private async Task EnrichPackageWithCatalogDataAsync(NuGetSource source, NuGetPackage package, CancellationToken cancellationToken = default)
     {
         try
         {
-            // Fetch latest version's catalog entry from registration API
-            var registrationUrl = $"{RegistrationBaseUrl}/{package.Id.ToLowerInvariant()}/index.json";
-            var registrationResponse = await _httpClient.GetFromJsonAsync<NuGetRegistrationResponse>(registrationUrl, cancellationToken);
+            var endpoints = await ResolveEndpointsAsync(source, cancellationToken);
+            if (string.IsNullOrEmpty(endpoints.RegistrationBaseUrl))
+                return;
+            var registrationUrl = $"{endpoints.RegistrationBaseUrl}/{package.Id.ToLowerInvariant()}/index.json";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, registrationUrl);
+            ApplyAuth(request, source);
+
+            var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+            httpResponse.EnsureSuccessStatusCode();
+            var registrationResponse = await httpResponse.Content.ReadFromJsonAsync<NuGetRegistrationResponse>(cancellationToken: cancellationToken);
 
             if (registrationResponse?.Items == null || !registrationResponse.Items.Any())
                 return;
 
-            // Get the latest version's catalog entry
-            var latestPage = registrationResponse.Items.LastOrDefault();
-            if (latestPage?.Items == null || !latestPage.Items.Any())
-                return;
+            // Find the catalog entry matching this package's version.
+            // Registration pages may be stubs (Items == null) requiring a separate fetch.
+            NuGetCatalogEntry? catalogEntry = null;
 
-            var latestCatalogItem = latestPage.Items.LastOrDefault();
-            var catalogEntry = latestCatalogItem?.CatalogEntry;
+            for (var i = registrationResponse.Items.Count - 1; i >= 0; i--)
+            {
+                var page = registrationResponse.Items[i];
+
+                // If page items aren't inlined, fetch the full page
+                if (page.Items == null && !string.IsNullOrEmpty(page.Url))
+                {
+                    try
+                    {
+                        using var pageRequest = new HttpRequestMessage(HttpMethod.Get, page.Url);
+                        ApplyAuth(pageRequest, source);
+                        var pageResponse = await _httpClient.SendAsync(pageRequest, cancellationToken);
+                        pageResponse.EnsureSuccessStatusCode();
+                        page = await pageResponse.Content.ReadFromJsonAsync<NuGetRegistrationPage>(cancellationToken: cancellationToken);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+
+                if (page?.Items == null || page.Items.Count == 0)
+                    continue;
+
+                // Try to find the exact version match first
+                var match = page.Items.FirstOrDefault(item =>
+                    string.Equals(item.CatalogEntry?.Version, package.Version, StringComparison.OrdinalIgnoreCase));
+                if (match?.CatalogEntry != null)
+                {
+                    catalogEntry = match.CatalogEntry;
+                    break;
+                }
+
+                // Fall back to last item in the last page (latest)
+                if (i == registrationResponse.Items.Count - 1)
+                {
+                    catalogEntry = page.Items.LastOrDefault()?.CatalogEntry;
+                }
+            }
 
             if (catalogEntry == null)
                 return;
 
-            // Enrich with catalog data
             package.PackageSize = catalogEntry.PackageSize;
             package.ReleaseNotes = catalogEntry.ReleaseNotes;
 
-            // Extract target frameworks from dependency groups
             if (catalogEntry.DependencyGroups != null && catalogEntry.DependencyGroups.Any())
             {
                 package.TargetFrameworks = catalogEntry.DependencyGroups
@@ -234,12 +401,97 @@ public class NuGetClientService : IDisposable
                     .Select(g => g.TargetFramework!)
                     .Distinct()
                     .ToList();
+
+                // Store full dependency info (keep empty groups — they indicate supported frameworks)
+                package.Dependencies = catalogEntry.DependencyGroups
+                    .Select(g => new PackageDependencyGroup
+                    {
+                        TargetFramework = g.TargetFramework ?? "(any)",
+                        Packages = g.Dependencies?
+                            .Where(d => !string.IsNullOrEmpty(d.Id))
+                            .Select(d => new PackageDependencyInfo
+                            {
+                                Id = d.Id!,
+                                VersionRange = d.Range ?? ""
+                            })
+                            .ToList() ?? new()
+                    })
+                    .ToList();
             }
         }
         catch (Exception ex)
         {
-            // Don't fail the entire request if catalog enrichment fails
             _logService?.LogWarning($"Could not enrich package with catalog data: {ex.Message}", "NuGet");
+        }
+    }
+
+    /// <summary>
+    /// Resolve the V3 service endpoints for a feed.
+    /// Uses hardcoded URLs for nuget.org as a fast path.
+    /// </summary>
+    private async Task<FeedEndpoints> ResolveEndpointsAsync(NuGetSource source, CancellationToken cancellationToken)
+    {
+        // Fast path for nuget.org
+        if (IsNuGetOrg(source.Url))
+        {
+            return new FeedEndpoints
+            {
+                SearchQueryService = NuGetOrgSearchUrl,
+                RegistrationBaseUrl = NuGetOrgRegistrationUrl,
+                PackageBaseAddress = NuGetOrgFlatContainerUrl
+            };
+        }
+
+        // Check cache
+        if (_endpointCache.TryGetValue(source.Url, out var cached))
+            return cached;
+
+        // Resolve from service index
+        var indexUrl = source.Url.TrimEnd('/');
+        if (!indexUrl.EndsWith("/index.json"))
+            indexUrl += "/index.json";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, indexUrl);
+        ApplyAuth(request, source);
+
+        var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+        httpResponse.EnsureSuccessStatusCode();
+        var index = await httpResponse.Content.ReadFromJsonAsync<ServiceIndex>(cancellationToken: cancellationToken);
+
+        var endpoints = new FeedEndpoints();
+
+        if (index?.Resources != null)
+        {
+            endpoints.SearchQueryService = index.Resources
+                .FirstOrDefault(r => r.Type?.StartsWith("SearchQueryService") == true)?.Id ?? string.Empty;
+            endpoints.RegistrationBaseUrl = index.Resources
+                .FirstOrDefault(r => r.Type?.StartsWith("RegistrationsBaseUrl") == true)?.Id?.TrimEnd('/') ?? string.Empty;
+            endpoints.PackageBaseAddress = index.Resources
+                .FirstOrDefault(r => r.Type?.StartsWith("PackageBaseAddress") == true)?.Id?.TrimEnd('/') ?? string.Empty;
+        }
+
+        if (string.IsNullOrEmpty(endpoints.SearchQueryService))
+        {
+            _logService?.LogWarning($"Could not resolve SearchQueryService for '{source.Name}' ({source.Url})", "NuGet");
+        }
+
+        _endpointCache[source.Url] = endpoints;
+        return endpoints;
+    }
+
+    private static bool IsNuGetOrg(string url)
+    {
+        return url.Contains("api.nuget.org", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("nuget.org/v3", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ApplyAuth(HttpRequestMessage request, NuGetSource source)
+    {
+        if (!string.IsNullOrEmpty(source.Username) && !string.IsNullOrEmpty(source.ClearTextPassword))
+        {
+            var credentials = Convert.ToBase64String(
+                Encoding.ASCII.GetBytes($"{source.Username}:{source.ClearTextPassword}"));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         }
     }
 
@@ -247,6 +499,22 @@ public class NuGetClientService : IDisposable
     {
         _httpClient?.Dispose();
     }
+}
+
+// NuGet V3 service index model
+internal class ServiceIndex
+{
+    [JsonPropertyName("resources")]
+    public List<ServiceIndexResource>? Resources { get; set; }
+}
+
+internal class ServiceIndexResource
+{
+    [JsonPropertyName("@id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("@type")]
+    public string? Type { get; set; }
 }
 
 // NuGet API response models
@@ -354,6 +622,9 @@ internal class NuGetRegistrationResponse
 
 internal class NuGetRegistrationPage
 {
+    [JsonPropertyName("@id")]
+    public string? Url { get; set; }
+
     [JsonPropertyName("items")]
     public List<NuGetCatalogItem>? Items { get; set; }
 }
@@ -366,29 +637,8 @@ internal class NuGetCatalogItem
 
 internal class NuGetCatalogEntry
 {
-    [JsonPropertyName("id")]
-    public string? Id { get; set; }
-
     [JsonPropertyName("version")]
     public string? Version { get; set; }
-
-    [JsonPropertyName("description")]
-    public string? Description { get; set; }
-
-    [JsonPropertyName("projectUrl")]
-    public string? ProjectUrl { get; set; }
-
-    [JsonPropertyName("licenseUrl")]
-    public string? LicenseUrl { get; set; }
-
-    [JsonPropertyName("authors")]
-    public string? Authors { get; set; }
-
-    [JsonPropertyName("tags")]
-    public string? Tags { get; set; }
-
-    [JsonPropertyName("published")]
-    public DateTime? Published { get; set; }
 
     [JsonPropertyName("packageSize")]
     public long? PackageSize { get; set; }

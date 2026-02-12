@@ -27,4 +27,17 @@ public class NuGetPackage
     public List<string> TargetFrameworks { get; set; } = new();
     public long? PackageSize { get; set; }
     public string? ReleaseNotes { get; set; }
+    public List<PackageDependencyGroup> Dependencies { get; set; } = new();
+}
+
+public class PackageDependencyGroup
+{
+    public string TargetFramework { get; set; } = string.Empty;
+    public List<PackageDependencyInfo> Packages { get; set; } = new();
+}
+
+public class PackageDependencyInfo
+{
+    public string Id { get; set; } = string.Empty;
+    public string VersionRange { get; set; } = string.Empty;
 }
