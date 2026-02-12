@@ -868,7 +868,8 @@ public class LazyNuGetWindow : IDisposable
             outdatedPackages,
             onViewPackages: () => SwitchToPackagesView(project),
             onUpdateAll: () => HandleUpdateAll(project),
-            onRestore: () => HandleRestore(project));
+            onRestore: () => HandleRestore(project),
+            onDeps: () => _ = ShowDependencyTreeAsync(project));
 
         UpdateDetailsPanel(controls);
     }
@@ -891,7 +892,8 @@ public class LazyNuGetWindow : IDisposable
             nugetData: null,
             onUpdate: () => HandleUpdatePackage(package),
             onChangeVersion: () => HandleChangeVersion(package),
-            onRemove: () => HandleRemovePackage(package));
+            onRemove: () => HandleRemovePackage(package),
+            onDeps: () => HandleShowPackageDeps(package));
         UpdateDetailsPanel(loadingControls);
 
         // Fetch package details asynchronously
@@ -919,12 +921,21 @@ public class LazyNuGetWindow : IDisposable
                 nugetData,
                 onUpdate: () => HandleUpdatePackage(package),
                 onChangeVersion: () => HandleChangeVersion(package),
-                onRemove: () => HandleRemovePackage(package));
+                onRemove: () => HandleRemovePackage(package),
+                onDeps: () => HandleShowPackageDeps(package));
             UpdateDetailsPanel(controls);
         }
         catch (Exception ex)
         {
             _windowSystem.LogService.LogError($"Error loading package details: {ex.Message}", ex, "NuGet");
+        }
+    }
+
+    private void HandleShowPackageDeps(PackageReference package)
+    {
+        if (_selectedProject != null)
+        {
+            _ = ShowDependencyTreeAsync(_selectedProject, package);
         }
     }
 
@@ -1494,8 +1505,8 @@ public class LazyNuGetWindow : IDisposable
 
         return _currentViewState switch
         {
-            ViewState.Projects => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+D[/][grey70]:Deps  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+O[/][grey70]:Open  [/][cyan1]Ctrl+R[/][grey70]:Reload  [/][cyan1]Esc[/][grey70]:Exit[/]",
-            ViewState.Packages => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Esc[/][grey70]:Back  [/][cyan1]Ctrl+U[/][grey70]:Update  [/][cyan1]Ctrl+X[/][grey70]:Remove  [/][cyan1]Ctrl+D[/][grey70]:Deps  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
+            ViewState.Projects => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+O[/][grey70]:Open  [/][cyan1]Ctrl+R[/][grey70]:Reload  [/][cyan1]Esc[/][grey70]:Exit[/]",
+            ViewState.Packages => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Esc[/][grey70]:Back  [/][cyan1]Ctrl+U[/][grey70]:Update  [/][cyan1]Ctrl+X[/][grey70]:Remove  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
             ViewState.Search => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:Install  [/][cyan1]Esc[/][grey70]:Cancel  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
             _ => "[grey70]?:Help[/]"
         };

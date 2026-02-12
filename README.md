@@ -55,7 +55,7 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 - 🔍 **Package Browser** - View installed packages with version information
 - ⚠️ **Update Detection** - Identifies outdated packages with real-time NuGet.org checks
 - 🔎 **NuGet.org Search** - Search and browse packages directly from the terminal
-- 🌳 **Dependency Tree** - View package dependencies and full project dependency tree (Ctrl+D)
+- 🌳 **Dependency Tree** - View full project dependency tree (Ctrl+D from Projects) or a package's declared NuGet dependencies by target framework (Ctrl+D from Packages)
 - 🔗 **Private Feed Support** - Discovers NuGet.config feeds with custom source management
 - 📜 **Operation History** - Track all NuGet operations with filtering and retry capabilities (Ctrl+H)
 - ⚙️ **Settings** - Configure feeds and preferences (Ctrl+P)
@@ -74,14 +74,15 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 | `Ctrl+O` | Open folder picker |
 | `Ctrl+R` | Reload projects |
 | `Ctrl+S` | Search NuGet.org |
-| `Ctrl+D` | View dependency tree |
+| `Ctrl+D` | Dependency tree (project deps or package deps) |
 | `Ctrl+H` | View operation history |
 | `Ctrl+P` | Settings |
 | `Ctrl+U` | Update package / Update all |
 | `Ctrl+V` | Change package version |
 | `Ctrl+X` | Remove package |
+| `Ctrl+L` | Open log viewer |
+| `PgUp/PgDn` | Scroll details panel |
 | `Esc` | Go back / Close dialogs |
-| `Alt+F` | File menu |
 
 ## Installation
 

@@ -19,7 +19,8 @@ public static class InteractivePackageDetailsBuilder
         NuGetPackage? nugetData,
         Action onUpdate,
         Action onChangeVersion,
-        Action onRemove)
+        Action onRemove,
+        Action? onDeps = null)
     {
         var controls = new List<IWindowControl>();
 
@@ -51,7 +52,7 @@ public static class InteractivePackageDetailsBuilder
         controls.Add(toolbarTop);
 
         // Action toolbar - placed after status, before details
-        var toolbar = BuildActionToolbar(package, nugetData, onUpdate, onChangeVersion, onRemove);
+        var toolbar = BuildActionToolbar(package, nugetData, onUpdate, onChangeVersion, onRemove, onDeps);
         controls.Add(toolbar);
 
         // Empty markup below toolbar for background extension
@@ -268,7 +269,8 @@ public static class InteractivePackageDetailsBuilder
         NuGetPackage? nugetData,
         Action onUpdate,
         Action onChangeVersion,
-        Action onRemove)
+        Action onRemove,
+        Action? onDeps)
     {
         bool hasVersions = nugetData?.Versions.Any() == true;
 
@@ -297,6 +299,18 @@ public static class InteractivePackageDetailsBuilder
             .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
+        // Deps button
+        var depsBtn = Controls.Button("[cyan1]Deps[/] [grey78](Ctrl+D)[/]")
+            .OnClick((s, e) => onDeps?.Invoke())
+            .Enabled(onDeps != null)
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .WithDisabledBackgroundColor(Color.Grey23)
+            .WithDisabledForegroundColor(Color.Grey50)
+            .Build();
+
         // Remove button
         var removeBtn = Controls.Button("[cyan1]Remove[/] [grey78](Ctrl+X)[/]")
             .OnClick((s, e) => onRemove())
@@ -311,6 +325,7 @@ public static class InteractivePackageDetailsBuilder
         return Controls.Toolbar()
             .AddButton(updateBtn)
             .AddButton(versionBtn)
+            .AddButton(depsBtn)
             .AddButton(removeBtn)
             .WithSpacing(2)
             .WithBackgroundColor(Color.Grey15)

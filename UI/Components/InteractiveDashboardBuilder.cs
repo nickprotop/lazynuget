@@ -19,7 +19,8 @@ public static class InteractiveDashboardBuilder
         List<PackageReference> outdatedPackages,
         Action onViewPackages,
         Action onUpdateAll,
-        Action onRestore)
+        Action onRestore,
+        Action? onDeps = null)
     {
         var controls = new List<IWindowControl>();
 
@@ -52,7 +53,7 @@ public static class InteractiveDashboardBuilder
         controls.Add(toolbarTop);
 
         // Action toolbar
-        var toolbar = BuildActionToolbar(outdatedPackages, onViewPackages, onUpdateAll, onRestore);
+        var toolbar = BuildActionToolbar(outdatedPackages, onViewPackages, onUpdateAll, onRestore, onDeps);
         controls.Add(toolbar);
 
         // Empty markup below toolbar for background extension
@@ -153,7 +154,8 @@ public static class InteractiveDashboardBuilder
         List<PackageReference> outdatedPackages,
         Action onViewPackages,
         Action onUpdateAll,
-        Action onRestore)
+        Action onRestore,
+        Action? onDeps)
     {
         // View Packages button
         var viewBtn = Controls.Button("[cyan1]View Packages[/] [grey78](Enter)[/]")
@@ -179,6 +181,18 @@ public static class InteractiveDashboardBuilder
             .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
+        // Deps button
+        var depsBtn = Controls.Button("[cyan1]Deps[/] [grey78](Ctrl+D)[/]")
+            .OnClick((s, e) => onDeps?.Invoke())
+            .Enabled(onDeps != null)
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .WithDisabledBackgroundColor(Color.Grey23)
+            .WithDisabledForegroundColor(Color.Grey50)
+            .Build();
+
         // Restore button
         var restoreBtn = Controls.Button("[cyan1]Restore[/] [grey78](Ctrl+R)[/]")
             .OnClick((s, e) => onRestore())
@@ -193,6 +207,7 @@ public static class InteractiveDashboardBuilder
         return Controls.Toolbar()
             .AddButton(viewBtn)
             .AddButton(updateBtn)
+            .AddButton(depsBtn)
             .AddButton(restoreBtn)
             .WithSpacing(2)
             .WithBackgroundColor(Color.Grey15)
