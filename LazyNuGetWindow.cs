@@ -43,6 +43,8 @@ public class LazyNuGetWindow : IDisposable
     private List<ProjectInfo> _projects = new();
     private ProjectInfo? _selectedProject;
     private ViewState _currentViewState = ViewState.Projects;
+    private ViewState _preSearchViewState = ViewState.Projects;
+    private int _preSearchSelectedIndex = 0;
     private List<NuGetPackage> _searchResults = new();
 
     // Services
@@ -707,13 +709,36 @@ public class LazyNuGetWindow : IDisposable
                 break;
 
             case ViewState.Search:
-                SwitchToProjectsView();
+                RestorePreSearchView();
                 break;
 
             case ViewState.Projects:
                 _ = ConfirmExitAsync();
                 break;
         }
+    }
+
+    private void RestorePreSearchView()
+    {
+        if (_preSearchViewState == ViewState.Packages && _selectedProject != null)
+        {
+            // Return to the exact project's package list
+            var project = _projects.FirstOrDefault(p => p.FilePath == _selectedProject.FilePath);
+            if (project != null)
+            {
+                SwitchToPackagesView(project);
+                // Restore the previously selected package index
+                if (_contextList != null && _preSearchSelectedIndex >= 0
+                    && _preSearchSelectedIndex < _contextList.Items.Count)
+                {
+                    _contextList.SelectedIndex = _preSearchSelectedIndex;
+                }
+                return;
+            }
+        }
+
+        // Default: return to Projects view (preserves selected project via _selectedProject)
+        SwitchToProjectsView();
     }
 
     private async Task ConfirmExitAsync()
@@ -874,6 +899,14 @@ public class LazyNuGetWindow : IDisposable
 
     private void SwitchToSearchResultsView(NuGetPackage selectedPackage)
     {
+        // Remember the current view so Escape restores it exactly
+        _preSearchViewState = _currentViewState;
+        _preSearchSelectedIndex = _contextList?.SelectedIndex ?? 0;
+        if (_currentViewState == ViewState.Projects && _contextList?.SelectedItem?.Tag is ProjectInfo currentProj)
+        {
+            _selectedProject = currentProj;
+        }
+
         _currentViewState = ViewState.Search;
         _searchResults = new List<NuGetPackage> { selectedPackage };
 
