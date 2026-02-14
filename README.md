@@ -53,19 +53,14 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 
 ## Features
 
-- 📦 **Project Discovery** - Automatically finds all .csproj files in your directory tree
-- 🔍 **Package Browser** - View installed packages with version information
-- ⚠️ **Update Detection** - Identifies outdated packages with real-time NuGet.org checks
-- 🔎 **NuGet.org Search** - Search and browse packages directly from the terminal
-- 🌳 **Dependency Tree** - View full project dependency tree (Ctrl+D from Projects) or a package's declared NuGet dependencies by target framework (Ctrl+D from Packages)
-- 🔗 **Private Feed Support** - Discovers NuGet.config feeds with custom source management
-- 📜 **Operation History** - Track all NuGet operations with filtering and retry capabilities (Ctrl+H)
-- ⚙️ **Settings** - Configure feeds and preferences (Ctrl+P)
-- 📊 **Rich Package Metadata** - View authors, license, tags, target frameworks, vulnerabilities, and more
-- ⌨️ **Keyboard-Driven** - Navigate everything with keyboard shortcuts (lazygit-style)
-- 🎨 **Clean TUI** - Beautiful terminal interface with syntax highlighting
-- 📊 **Dashboard Stats** - See package counts and outdated packages at a glance
-- 📁 **Folder Picker** - Native folder navigation with Ctrl+O
+| | |
+|---|---|
+| 🎨 **Visual Interface** | Beautiful terminal UI, not just CLI commands |
+| ⚡ **Smart Updates** | Auto-detect outdated packages across all projects |
+| 🔍 **Package Search** | Browse and install from NuGet.org in-app |
+| 🌳 **Dependencies** | Visualize project and package dependency trees |
+| 📜 **History** | Track and retry all NuGet operations |
+| ⚙️ **Configuration** | Private feeds, custom sources, settings |
 
 ## Keyboard Shortcuts
 
