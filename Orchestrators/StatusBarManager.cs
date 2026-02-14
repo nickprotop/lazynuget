@@ -7,7 +7,7 @@ namespace LazyNuGet.Orchestrators;
 
 /// <summary>
 /// Manages status bar updates, breadcrumbs, and help text.
-/// Centralizes all status display logic.
+/// Centralizes all status display logic for Projects and Packages views.
 /// </summary>
 public class StatusBarManager
 {
@@ -64,7 +64,7 @@ public class StatusBarManager
     {
         var folderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
         if (string.IsNullOrEmpty(folderName)) folderName = _currentFolderPath;
-        _topStatusLeft?.SetContent(new List<string> { $"[cyan1]{Markup.Escape(folderName)}[/] [grey50]({Markup.Escape(_currentFolderPath)})[/]" });
+        _topStatusLeft?.SetContent(new List<string> { $"[cyan1]{Markup.Escape(folderName)}[/] [grey50]({Markup.Escape(_currentFolderPath)})[/] [grey50](Esc: Exit)[/]" });
     }
 
     /// <summary>
@@ -74,17 +74,7 @@ public class StatusBarManager
     {
         var projFolderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
         if (string.IsNullOrEmpty(projFolderName)) projFolderName = _currentFolderPath;
-        _topStatusLeft?.SetContent(new List<string> { $"[grey50]{Markup.Escape(projFolderName)}[/] [grey50]›[/] [cyan1]{Markup.Escape(project.Name)}[/] [grey50]› Packages[/]" });
-    }
-
-    /// <summary>
-    /// Update breadcrumb for search view
-    /// </summary>
-    public void UpdateBreadcrumbForSearch(string packageId)
-    {
-        var searchFolderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
-        if (string.IsNullOrEmpty(searchFolderName)) searchFolderName = _currentFolderPath;
-        _topStatusLeft?.SetContent(new List<string> { $"[grey50]{Markup.Escape(searchFolderName)}[/] [grey50]›[/] [cyan1]Search[/] [grey50]›[/] [{ColorScheme.InfoMarkup}]{Markup.Escape(packageId)}[/]" });
+        _topStatusLeft?.SetContent(new List<string> { $"[grey50]{Markup.Escape(projFolderName)}[/] [grey50]>[/] [cyan1]{Markup.Escape(project.Name)}[/] [grey50]> Packages[/] [grey50](Esc: Back)[/]" });
     }
 
     /// <summary>
@@ -101,16 +91,7 @@ public class StatusBarManager
     /// </summary>
     public void UpdateHeadersForPackages(ProjectInfo project)
     {
-        _leftPanelHeader?.SetContent(new List<string> { $"[grey70]{Markup.Escape(project.Name)} › Packages[/]" });
-        UpdateRightPanelHeader("Details");
-    }
-
-    /// <summary>
-    /// Update panel headers for search view
-    /// </summary>
-    public void UpdateHeadersForSearch()
-    {
-        _leftPanelHeader?.SetContent(new List<string> { "[grey70]Install Package[/]" });
+        _leftPanelHeader?.SetContent(new List<string> { $"[grey70]{Markup.Escape(project.Name)} > Packages[/]" });
         UpdateRightPanelHeader("Details");
     }
 
@@ -144,9 +125,9 @@ public class StatusBarManager
     /// <summary>
     /// Update the status right text (clock and statistics)
     /// </summary>
-    public void UpdateStatusRight(ViewState viewState, ProjectInfo? selectedProject, List<NuGetPackage> searchResults)
+    public void UpdateStatusRight(ViewState viewState, ProjectInfo? selectedProject)
     {
-        var stats = GetStatusRightText(viewState, selectedProject, searchResults);
+        var stats = GetStatusRightText(viewState, selectedProject);
         _topStatusRight?.SetContent(new List<string> { $"[grey70]{stats}[/]" });
     }
 
@@ -164,14 +145,10 @@ public class StatusBarManager
     /// </summary>
     private string GetHelpText(ViewState viewState)
     {
-        bool scrollable = IsRightPanelScrollable();
-        string scrollHint = scrollable ? "[cyan1]PgUp/PgDn[/][grey70]:Scroll  [/]" : "";
-
         return viewState switch
         {
-            ViewState.Projects => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+O[/][grey70]:Open  [/][cyan1]Ctrl+R[/][grey70]:Reload  [/][cyan1]Esc[/][grey70]:Exit[/]",
-            ViewState.Packages => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]Ctrl+T[/][grey70]:Tabs  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+F[/][grey70]:Filter  [/][cyan1]Esc[/][grey70]:Back[/]",
-            ViewState.Search => $"[cyan1]↑↓[/][grey70]:Navigate  [/]{scrollHint}[cyan1]I[/][grey70]:Install  [/][cyan1]Esc[/][grey70]:Cancel  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]Ctrl+H[/][grey70]:History[/]",
+            ViewState.Projects => $"[cyan1][Projects][/]  [cyan1]↑↓[/][grey70]:Navigate  [/][cyan1]PgUp/PgDn[/][grey70]:Scroll  [/][cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]?[/][grey70]:Help  [/][cyan1]Esc[/][grey70]:Exit[/]",
+            ViewState.Packages => $"[cyan1][Packages][/]  [cyan1]↑↓[/][grey70]:Navigate  [/][cyan1]PgUp/PgDn[/][grey70]:Scroll  [/][cyan1]F1-F5[/][grey70]:Tabs  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+F[/][grey70]:Filter  [/][cyan1]?[/][grey70]:Help  [/][cyan1]Esc[/][grey70]:Back[/]",
             _ => "[grey70]?:Help[/]"
         };
     }
@@ -179,26 +156,24 @@ public class StatusBarManager
     /// <summary>
     /// Get status right text with context-aware statistics
     /// </summary>
-    private string GetStatusRightText(ViewState viewState, ProjectInfo? selectedProject, List<NuGetPackage> searchResults)
+    private string GetStatusRightText(ViewState viewState, ProjectInfo? selectedProject)
     {
         var time = DateTime.Now.ToString("HH:mm:ss");
 
         return viewState switch
         {
             ViewState.Projects =>
-                $"{_projects.Count} projects · {_projects.Sum(p => p.Packages.Count)} pkgs · " +
+                $"{_projects.Count} projects | {_projects.Sum(p => p.Packages.Count)} pkgs | " +
                 (_projects.Sum(p => p.OutdatedCount) is var outdated && outdated > 0
-                    ? $"[yellow]{outdated} outdated[/] · "
+                    ? $"[yellow]{outdated} outdated[/] | "
                     : "") +
                 time,
             ViewState.Packages when selectedProject != null =>
-                $"{selectedProject.Packages.Count} pkgs · " +
+                $"{selectedProject.Packages.Count} pkgs | " +
                 (selectedProject.OutdatedCount > 0
-                    ? $"[yellow]{selectedProject.OutdatedCount} outdated[/] · "
-                    : "[green]up-to-date[/] · ") +
+                    ? $"[yellow]{selectedProject.OutdatedCount} outdated[/] | "
+                    : "[green]up-to-date[/] | ") +
                 time,
-            ViewState.Search =>
-                $"{searchResults.Count} selected · {_projects.Count} projects · " + time,
             _ => time
         };
     }

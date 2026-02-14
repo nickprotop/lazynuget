@@ -48,13 +48,15 @@ public class ErrorHandler
     /// <param name="message">User-friendly message</param>
     /// <param name="context">Context for logging (e.g., "NuGet", "UI", "CLI")</param>
     /// <param name="parentWindow">Parent window for modal display</param>
+    /// <param name="suggestions">Optional suggestions to help the user resolve the error</param>
     public async Task HandleAsync(
         Exception exception,
         ErrorSeverity severity,
         string title,
         string message,
         string context = "App",
-        Window? parentWindow = null)
+        Window? parentWindow = null,
+        IReadOnlyList<string>? suggestions = null)
     {
         // Always log the error
         LogError(exception, severity, title, message, context);
@@ -63,7 +65,7 @@ public class ErrorHandler
         switch (severity)
         {
             case ErrorSeverity.Critical:
-                await ShowCriticalErrorAsync(title, message, exception.Message, parentWindow);
+                await ShowCriticalErrorAsync(title, message, exception.Message, parentWindow, suggestions);
                 break;
 
             case ErrorSeverity.Warning:
@@ -85,13 +87,15 @@ public class ErrorHandler
     /// <param name="details">Additional details</param>
     /// <param name="context">Context for logging</param>
     /// <param name="parentWindow">Parent window for modal display</param>
+    /// <param name="suggestions">Optional suggestions to help the user resolve the error</param>
     public async Task HandleAsync(
         ErrorSeverity severity,
         string title,
         string message,
         string? details = null,
         string context = "App",
-        Window? parentWindow = null)
+        Window? parentWindow = null,
+        IReadOnlyList<string>? suggestions = null)
     {
         // Log the error
         LogError(null, severity, title, message, context, details);
@@ -100,7 +104,7 @@ public class ErrorHandler
         switch (severity)
         {
             case ErrorSeverity.Critical:
-                await ShowCriticalErrorAsync(title, message, details, parentWindow);
+                await ShowCriticalErrorAsync(title, message, details, parentWindow, suggestions);
                 break;
 
             case ErrorSeverity.Warning:
@@ -147,9 +151,10 @@ public class ErrorHandler
         string title,
         string message,
         string? details,
-        Window? parentWindow)
+        Window? parentWindow,
+        IReadOnlyList<string>? suggestions = null)
     {
-        await ErrorModal.ShowAsync(_windowSystem, title, message, details, parentWindow);
+        await ErrorModal.ShowAsync(_windowSystem, title, message, details, parentWindow, suggestions);
     }
 
     private void ShowWarningNotification(

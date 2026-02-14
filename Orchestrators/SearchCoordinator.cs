@@ -1,5 +1,6 @@
 using SharpConsoleUI;
 using SharpConsoleUI.Controls;
+using SharpConsoleUI.Core;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Modals;
@@ -9,8 +10,8 @@ using Spectre.Console;
 namespace LazyNuGet.Orchestrators;
 
 /// <summary>
-/// Orchestrates search operations and search-related UI coordination.
-/// Manages search modal, search results view, and installation from search.
+/// Orchestrates search operations and installation workflows.
+/// Manages search modal, install planning modal, and batch installation.
 /// </summary>
 public class SearchCoordinator
 {
@@ -20,11 +21,6 @@ public class SearchCoordinator
     private readonly OperationHistoryService _historyService;
     private readonly ErrorHandler _errorHandler;
     private readonly Window? _parentWindow;
-
-    // Search state
-    private List<NuGetPackage> _searchResults = new();
-    private ViewState _preSearchViewState = ViewState.Projects;
-    private int _preSearchSelectedIndex = 0;
 
     public SearchCoordinator(
         ConsoleWindowSystem windowSystem,
@@ -51,40 +47,27 @@ public class SearchCoordinator
     }
 
     /// <summary>
-    /// Save the current view state before switching to search results
+    /// Show the install planning modal for a package across all projects.
+    /// Returns the list of selected projects or null if cancelled.
     /// </summary>
-    public void SavePreSearchState(ViewState currentState, int selectedIndex, ProjectInfo? selectedProject)
+    /// <param name="currentProject">The currently selected project (if in single project view), or null if in all projects view</param>
+    public async Task<List<ProjectInfo>?> ShowInstallPlanningModalAsync(
+        NuGetPackage package,
+        List<ProjectInfo> projects,
+        ProjectInfo? currentProject = null)
     {
-        _preSearchViewState = currentState;
-        _preSearchSelectedIndex = selectedIndex;
+        // Enrich package with catalog data (dependencies, target frameworks, etc.)
+        var source = _nugetService.Sources.FirstOrDefault(s => s.IsEnabled);
+        if (source != null)
+        {
+            await _nugetService.EnrichPackageWithCatalogDataAsync(source, package);
+        }
+
+        return await InstallPlanningModal.ShowAsync(_windowSystem, package, projects, currentProject, _parentWindow);
     }
 
     /// <summary>
-    /// Get the saved pre-search view state
-    /// </summary>
-    public (ViewState viewState, int selectedIndex) GetPreSearchState()
-    {
-        return (_preSearchViewState, _preSearchSelectedIndex);
-    }
-
-    /// <summary>
-    /// Save search results for display
-    /// </summary>
-    public void SetSearchResults(List<NuGetPackage> results)
-    {
-        _searchResults = results;
-    }
-
-    /// <summary>
-    /// Get the current search results
-    /// </summary>
-    public List<NuGetPackage> GetSearchResults()
-    {
-        return _searchResults;
-    }
-
-    /// <summary>
-    /// Handle installation of a package from search results
+    /// Handle installation of a package from search results to a single project
     /// </summary>
     public async Task<OperationResult> HandleInstallFromSearchAsync(
         NuGetPackage package,
@@ -137,57 +120,102 @@ public class SearchCoordinator
             package.Version,
             _parentWindow);
 
+        if (result.Success)
+        {
+            _windowSystem.NotificationStateService.ShowNotification(
+                "Install Successful",
+                $"{package.Id} {package.Version} installed to {targetProject.Name}",
+                NotificationSeverity.Success,
+                timeout: 3000,
+                parentWindow: _parentWindow);
+        }
+
         return result;
     }
 
     /// <summary>
-    /// Format package details for search results display
+    /// Batch install a package to multiple projects, showing a single progress modal.
     /// </summary>
-    public List<string> FormatSearchPackageDetails(NuGetPackage package)
+    public async Task<OperationResult> BatchInstallAsync(
+        NuGetPackage package,
+        List<ProjectInfo> targetProjects)
     {
-        var lines = new List<string>
-        {
-            $"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]",
-            $"[grey70]Version: {package.Version}[/]",
-            ""
-        };
+        if (targetProjects.Count == 0)
+            return new OperationResult { Success = false, Message = "No projects selected" };
 
-        if (!string.IsNullOrEmpty(package.Description))
+        var description = targetProjects.Count == 1
+            ? $"Installing {package.Id} {package.Version} to {targetProjects[0].Name}"
+            : $"Installing {package.Id} {package.Version} to {targetProjects.Count} projects";
+
+        var result = await OperationProgressModal.ShowAsync(
+            _windowSystem,
+            OperationType.Add,
+            async (ct, progress) =>
+            {
+                var successes = 0;
+                var failures = new List<string>();
+
+                for (int i = 0; i < targetProjects.Count; i++)
+                {
+                    var project = targetProjects[i];
+                    progress.Report($"[{i + 1}/{targetProjects.Count}] Installing to {project.Name}...");
+
+                    var installResult = await _cliService.AddPackageAsync(
+                        project.FilePath, package.Id, package.Version, ct, progress);
+
+                    if (installResult.Success)
+                    {
+                        successes++;
+                        progress.Report($"Installed to {project.Name} successfully");
+                    }
+                    else
+                    {
+                        failures.Add($"{project.Name}: {installResult.Message}");
+                        progress.Report($"Failed to install to {project.Name}: {installResult.Message}");
+                    }
+                }
+
+                if (failures.Count == 0)
+                {
+                    return OperationResult.FromSuccess(
+                        $"Successfully installed {package.Id} to {successes} project{(successes != 1 ? "s" : "")}");
+                }
+                else if (successes > 0)
+                {
+                    return new OperationResult
+                    {
+                        Success = true,
+                        Message = $"Installed to {successes} of {targetProjects.Count} projects. {failures.Count} failed.",
+                        ErrorDetails = string.Join("\n", failures)
+                    };
+                }
+                else
+                {
+                    return OperationResult.FromError(
+                        "All installations failed",
+                        string.Join("\n", failures));
+                }
+            },
+            "Installing Package",
+            description,
+            _historyService,
+            null,
+            null,
+            package.Id,
+            package.Version,
+            _parentWindow);
+
+        if (result.Success)
         {
-            lines.Add($"[grey70 bold]Description:[/]");
-            lines.Add($"[grey70]{Markup.Escape(package.Description)}[/]");
-            lines.Add("");
+            var projectNames = string.Join(", ", targetProjects.Select(p => p.Name));
+            _windowSystem.NotificationStateService.ShowNotification(
+                "Install Successful",
+                $"{package.Id} {package.Version} installed to {targetProjects.Count} project{(targetProjects.Count != 1 ? "s" : "")}",
+                NotificationSeverity.Success,
+                timeout: 3000,
+                parentWindow: _parentWindow);
         }
 
-        if (package.TotalDownloads > 0)
-        {
-            lines.Add($"[grey70]Downloads: {FormatDownloads(package.TotalDownloads)}[/]");
-        }
-
-        if (package.Published.HasValue)
-        {
-            lines.Add($"[grey70]Published: {package.Published.Value:yyyy-MM-dd}[/]");
-        }
-
-        if (!string.IsNullOrEmpty(package.ProjectUrl))
-        {
-            lines.Add($"[grey70]URL: {Markup.Escape(package.ProjectUrl)}[/]");
-        }
-
-        lines.Add("");
-        lines.Add($"[{ColorScheme.PrimaryMarkup}]Select a project from the list on the left[/]");
-
-        return lines;
-    }
-
-    private static string FormatDownloads(long downloads)
-    {
-        if (downloads >= 1_000_000_000)
-            return $"{downloads / 1_000_000_000.0:F1}B";
-        if (downloads >= 1_000_000)
-            return $"{downloads / 1_000_000.0:F1}M";
-        if (downloads >= 1_000)
-            return $"{downloads / 1_000.0:F1}K";
-        return downloads.ToString();
+        return result;
     }
 }

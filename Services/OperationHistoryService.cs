@@ -61,34 +61,6 @@ public class OperationHistoryService
         _ = SaveHistoryAsync();
     }
 
-    /// <summary>
-    /// Get the 10 most recently installed packages (unique by PackageId)
-    /// </summary>
-    public async Task<List<RecentPackageInfo>> GetRecentInstallsAsync()
-    {
-        // Filter for successful Add operations
-        var installOperations = _history
-            .Where(e => e.Type == OperationType.Add && e.Success && !string.IsNullOrEmpty(e.PackageId))
-            .ToList();
-
-        // Group by PackageId and take the most recent entry for each package
-        var recentPackages = installOperations
-            .GroupBy(e => e.PackageId)
-            .Select(g => g.OrderByDescending(e => e.Timestamp).First())
-            .OrderByDescending(e => e.Timestamp)
-            .Take(10)
-            .Select(e => new RecentPackageInfo
-            {
-                PackageId = e.PackageId!,
-                Version = e.PackageVersion ?? "latest",
-                LastInstalled = e.Timestamp,
-                ProjectName = e.ProjectName
-            })
-            .ToList();
-
-        return await Task.FromResult(recentPackages);
-    }
-
     private async Task LoadHistoryAsync()
     {
         var loaded = await _repository.LoadHistoryAsync();
@@ -100,15 +72,4 @@ public class OperationHistoryService
     {
         await _repository.SaveHistoryAsync(_history);
     }
-}
-
-/// <summary>
-/// Information about a recently installed package
-/// </summary>
-public class RecentPackageInfo
-{
-    public string PackageId { get; set; } = "";
-    public string Version { get; set; } = "";
-    public DateTime LastInstalled { get; set; }
-    public string ProjectName { get; set; } = "";
 }

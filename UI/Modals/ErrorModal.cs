@@ -18,12 +18,14 @@ public class ErrorModal : ModalBase<bool>
     private readonly string _title;
     private readonly string _message;
     private readonly string? _details;
+    private readonly IReadOnlyList<string>? _suggestions;
 
-    private ErrorModal(string title, string message, string? details)
+    private ErrorModal(string title, string message, string? details, IReadOnlyList<string>? suggestions)
     {
         _title = title;
         _message = message;
         _details = details;
+        _suggestions = suggestions;
     }
 
     /// <summary>
@@ -34,15 +36,22 @@ public class ErrorModal : ModalBase<bool>
         string title,
         string message,
         string? details = null,
-        Window? parentWindow = null)
+        Window? parentWindow = null,
+        IReadOnlyList<string>? suggestions = null)
     {
-        var modal = new ErrorModal(title, message, details);
+        var modal = new ErrorModal(title, message, details, suggestions);
         return modal.ShowAsync(windowSystem, parentWindow);
     }
 
     protected override string GetTitle() => _title;
 
-    protected override (int width, int height) GetSize() => (60, 18);
+    protected override (int width, int height) GetSize()
+    {
+        var height = 18;
+        if (_suggestions is { Count: > 0 })
+            height += 2 + _suggestions.Count;
+        return (60, height);
+    }
 
     protected override BorderStyle GetBorderStyle() => BorderStyle.Single;
 
@@ -92,6 +101,24 @@ public class ErrorModal : ModalBase<bool>
 
             detailsPanel.AddControl(detailsBuilder.WithMargin(2, 0, 0, 0).Build());
             Modal.AddControl(detailsPanel);
+        }
+
+        // Suggestions section
+        if (_suggestions is { Count: > 0 })
+        {
+            Modal.AddControl(Controls.RuleBuilder()
+                .WithColor(ColorScheme.RuleColor)
+                .Build());
+
+            var suggestionsBuilder = Controls.Markup()
+                .AddLine($"[{ColorScheme.PrimaryMarkup} bold]Suggestions:[/]");
+
+            foreach (var suggestion in _suggestions)
+            {
+                suggestionsBuilder.AddLine($"[{ColorScheme.SecondaryMarkup}]  - {Markup.Escape(suggestion)}[/]");
+            }
+
+            Modal.AddControl(suggestionsBuilder.WithMargin(2, 0, 0, 0).Build());
         }
 
         // Bottom rule + dismiss hint

@@ -15,6 +15,7 @@ public class LazyNuGetSettings
     public List<string> RecentFolders { get; set; } = new();
     public List<CustomNuGetSource> CustomSources { get; set; } = new();
     public Dictionary<string, bool> SourceOverrides { get; set; } = new();
+    public bool ShowWelcomeOnStartup { get; set; } = true;
 }
 
 /// <summary>

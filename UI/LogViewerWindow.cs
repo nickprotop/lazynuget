@@ -41,7 +41,7 @@ public class LogViewerWindow
         // Header
         var header = Controls.Markup()
             .AddLine("[cyan1 bold]Application Logs[/]")
-            .AddLine("[grey50]Press Ctrl+L to close · Auto-scrolls to latest entries[/]")
+            .AddLine("[grey50]Press Esc or Ctrl+L to close · Auto-scrolls to latest entries[/]")
             .WithMargin(1, 1, 1, 0)
             .WithAlignment(HorizontalAlignment.Stretch)
             .Build();
@@ -67,10 +67,11 @@ public class LogViewerWindow
 
         _window.AddControl(_logPanel);
 
-        // Setup keyboard handler for Ctrl+L to close
+        // Setup keyboard handler for Esc and Ctrl+L to close
         _window.KeyPressed += (s, e) =>
         {
-            if (e.KeyInfo.Key == ConsoleKey.L && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            if (e.KeyInfo.Key == ConsoleKey.Escape ||
+                (e.KeyInfo.Key == ConsoleKey.L && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control)))
             {
                 Close();
                 e.Handled = true;

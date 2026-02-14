@@ -10,13 +10,14 @@ using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 namespace LazyNuGet.UI.Components;
 
 /// <summary>
-/// Builder for interactive package details with real button controls
+/// Builder for interactive package details with tabbed interface (F1-F5)
 /// </summary>
 public static class InteractivePackageDetailsBuilder
 {
     public static List<IWindowControl> BuildInteractiveDetails(
         PackageReference package,
         NuGetPackage? nugetData,
+        PackageDetailTab activeTab,
         Action onUpdate,
         Action onChangeVersion,
         Action onRemove,
@@ -64,16 +65,25 @@ public static class InteractivePackageDetailsBuilder
             .Build();
         controls.Add(toolbarBottom);
 
-        // Separator after toolbar (always visible)
+        // Separator after toolbar
         var separator2 = Controls.Rule();
-        separator2.Margin = new Margin(1, 0, 1, 1);
+        separator2.Margin = new Margin(1, 0, 1, 0);
         controls.Add(separator2);
 
-        // NuGet.org data section
+        // Tab bar
+        var tabBar = BuildTabBar(activeTab);
+        controls.Add(tabBar);
+
+        // Separator after tab bar
+        var separator3 = Controls.Rule();
+        separator3.Margin = new Margin(1, 0, 1, 0);
+        controls.Add(separator3);
+
+        // Tab content
         if (nugetData != null)
         {
-            var details = BuildNuGetDetails(nugetData, package);
-            controls.Add(details);
+            var tabContent = BuildTabContent(activeTab, nugetData, package);
+            controls.Add(tabContent);
         }
         else
         {
@@ -112,20 +122,54 @@ public static class InteractivePackageDetailsBuilder
         return builder.WithMargin(1, 0, 0, 0).Build();
     }
 
-    private static MarkupControl BuildNuGetDetails(NuGetPackage nugetData, PackageReference package)
+    private static MarkupControl BuildTabBar(PackageDetailTab activeTab)
+    {
+        var tabs = new (PackageDetailTab tab, string key, string label)[]
+        {
+            (PackageDetailTab.Overview, "F1", "Overview"),
+            (PackageDetailTab.Dependencies, "F2", "Deps"),
+            (PackageDetailTab.Versions, "F3", "Versions"),
+            (PackageDetailTab.WhatsNew, "F4", "What's New"),
+        };
+
+        var parts = new List<string>();
+        foreach (var (tab, key, label) in tabs)
+        {
+            if (tab == activeTab)
+                parts.Add($"[white on grey35] {key} {label} [/]");
+            else
+                parts.Add($"[grey50]{key} {label}[/]");
+        }
+
+        return Controls.Markup()
+            .AddLine(string.Join("  ", parts))
+            .WithMargin(1, 1, 1, 0)
+            .WithName("tabBar")
+            .Build();
+    }
+
+    private static MarkupControl BuildTabContent(PackageDetailTab activeTab, NuGetPackage nugetData, PackageReference package)
+    {
+        return activeTab switch
+        {
+            PackageDetailTab.Overview => BuildOverviewPanel(nugetData, package),
+            PackageDetailTab.Dependencies => BuildDependenciesPanel(nugetData),
+            PackageDetailTab.Versions => BuildVersionsPanel(nugetData, package),
+            PackageDetailTab.WhatsNew => BuildWhatsNewPanel(nugetData, package),
+            _ => BuildOverviewPanel(nugetData, package),
+        };
+    }
+
+    private static MarkupControl BuildOverviewPanel(NuGetPackage nugetData, PackageReference package)
     {
         var builder = Controls.Markup();
 
         // Verification and warning badges
         var badges = new List<string>();
         if (nugetData.IsVerified)
-        {
             badges.Add("[green]✓ Verified[/]");
-        }
         if (nugetData.VulnerabilityCount > 0)
-        {
             badges.Add($"[red]⚠ {nugetData.VulnerabilityCount} Vulnerabilities[/]");
-        }
         if (badges.Any())
         {
             builder.AddLine(string.Join(" ", badges));
@@ -137,16 +181,13 @@ public static class InteractivePackageDetailsBuilder
         {
             builder.AddLine($"[red bold]⚠ DEPRECATED[/]");
             if (!string.IsNullOrEmpty(nugetData.DeprecationMessage))
-            {
                 builder.AddLine($"[yellow]{Markup.Escape(nugetData.DeprecationMessage)}[/]");
-            }
             if (!string.IsNullOrEmpty(nugetData.AlternatePackageId))
-            {
                 builder.AddLine($"[grey70]Alternative: {Markup.Escape(nugetData.AlternatePackageId)}[/]");
-            }
             builder.AddEmptyLine();
         }
 
+        // Description
         if (!string.IsNullOrEmpty(nugetData.Description))
         {
             builder.AddLine($"[grey70 bold]Description:[/]");
@@ -154,114 +195,251 @@ public static class InteractivePackageDetailsBuilder
             builder.AddEmptyLine();
         }
 
+        // Authors (merged from Details tab)
         if (nugetData.Authors.Any())
         {
             var authors = string.Join(", ", nugetData.Authors);
             builder.AddLine($"[grey70]Authors: {Markup.Escape(authors)}[/]");
         }
 
-        // License - prefer expression over URL
+        // License
         if (!string.IsNullOrEmpty(nugetData.LicenseExpression))
-        {
             builder.AddLine($"[grey70]License: {Markup.Escape(nugetData.LicenseExpression)}[/]");
-        }
         else if (!string.IsNullOrEmpty(nugetData.LicenseUrl))
-        {
             builder.AddLine($"[grey70]License: {Markup.Escape(nugetData.LicenseUrl)}[/]");
-        }
 
+        // Downloads
+        if (nugetData.TotalDownloads > 0)
+            builder.AddLine($"[grey70]Downloads: {FormatDownloads(nugetData.TotalDownloads)}[/]");
+
+        // Published
+        if (nugetData.Published.HasValue)
+            builder.AddLine($"[grey70]Published: {nugetData.Published.Value:yyyy-MM-dd}[/]");
+
+        // Package Size (merged from Details tab)
+        if (nugetData.PackageSize.HasValue)
+            builder.AddLine($"[grey70]Package Size: {FormatSize(nugetData.PackageSize.Value)}[/]");
+
+        // Tags (merged from Details tab)
         if (nugetData.Tags.Any())
         {
             var tags = string.Join(", ", nugetData.Tags);
             builder.AddLine($"[grey70]Tags: {Markup.Escape(tags)}[/]");
         }
 
-        if (nugetData.TotalDownloads > 0)
-        {
-            builder.AddLine($"[grey70]Downloads: {FormatDownloads(nugetData.TotalDownloads)}[/]");
-        }
-
-        if (nugetData.PackageSize.HasValue)
-        {
-            builder.AddLine($"[grey70]Package Size: {FormatSize(nugetData.PackageSize.Value)}[/]");
-        }
-
-        if (nugetData.Published.HasValue)
-        {
-            builder.AddLine($"[grey70]Published: {nugetData.Published.Value:yyyy-MM-dd}[/]");
-        }
-
+        // Target Frameworks (merged from Details tab)
         if (nugetData.TargetFrameworks.Any())
         {
             var frameworks = string.Join(", ", nugetData.TargetFrameworks);
             builder.AddLine($"[grey70]Target Frameworks: {Markup.Escape(frameworks)}[/]");
         }
 
+        // URLs (merged from Details tab)
         if (!string.IsNullOrEmpty(nugetData.ProjectUrl))
-        {
             builder.AddLine($"[grey70]Project URL: {Markup.Escape(nugetData.ProjectUrl)}[/]");
-        }
-
         if (!string.IsNullOrEmpty(nugetData.RepositoryUrl))
-        {
             builder.AddLine($"[grey70]Repository: {Markup.Escape(nugetData.RepositoryUrl)}[/]");
-        }
 
-        // Release notes
-        if (!string.IsNullOrEmpty(nugetData.ReleaseNotes))
+        // Version summary
+        if (package.IsOutdated && !string.IsNullOrEmpty(package.LatestVersion))
         {
             builder.AddEmptyLine();
-            builder.AddLine($"[grey70 bold]Release Notes:[/]");
-            // Truncate release notes if too long
-            var notes = nugetData.ReleaseNotes;
-            if (notes.Length > 300)
-            {
-                notes = notes.Substring(0, 297) + "...";
-            }
-            builder.AddLine($"[grey70]{Markup.Escape(notes)}[/]");
+            builder.AddLine($"[yellow]Installed:[/] [grey70]{Markup.Escape(package.Version)}[/]  [yellow]Latest:[/] [grey70]{Markup.Escape(package.LatestVersion)}[/]");
         }
 
-        if (nugetData.Versions.Any())
+        builder.AddEmptyLine();
+        return builder.WithMargin(1, 0, 0, 0).Build();
+    }
+
+    private static MarkupControl BuildDependenciesPanel(NuGetPackage nugetData)
+    {
+        // Tree guide characters (same as DependencyTreeModal)
+        const string Branch = "├── ";
+        const string Last   = "└── ";
+        const string Pipe   = "│   ";
+        const string Blank  = "    ";
+
+        var builder = Controls.Markup();
+
+        if (!nugetData.Dependencies.Any())
         {
+            builder.AddLine("[grey50]No dependencies[/]");
             builder.AddEmptyLine();
-            builder.AddLine($"[grey70 bold]Available Versions:[/]");
-            foreach (var version in nugetData.Versions.Take(5))
-            {
-                var indicator = version == package.Version ? "◄ installed" : "";
-                builder.AddLine($"[grey70]{Markup.Escape(version)} {indicator}[/]");
-            }
-            if (nugetData.Versions.Count > 5)
-            {
-                builder.AddLine($"[grey50]... and {nugetData.Versions.Count - 5} more[/]");
-            }
+            return builder.WithMargin(1, 0, 0, 0).Build();
         }
 
-        if (nugetData.Dependencies.Any())
-        {
-            builder.AddEmptyLine();
-            builder.AddLine($"[grey70 bold]Dependencies:[/]");
+        var totalDeps = nugetData.Dependencies.Sum(g => g.Packages.Count);
+        builder.AddLine($"[grey70 bold]Dependencies ({totalDeps} total):[/]");
+        builder.AddEmptyLine();
 
-            foreach (var group in nugetData.Dependencies)
+        // Root: package name
+        builder.AddLine($"[cyan1 bold]{Markup.Escape(nugetData.Id)}[/] [grey70]{Markup.Escape(nugetData.Version)}[/]");
+
+        // Render tree structure
+        for (var gi = 0; gi < nugetData.Dependencies.Count; gi++)
+        {
+            var group = nugetData.Dependencies[gi];
+            var isLastGroup = gi == nugetData.Dependencies.Count - 1;
+            var groupGuide = isLastGroup ? Last : Branch;
+            var groupPipe = isLastGroup ? Blank : Pipe;
+
+            var fwLabel = string.IsNullOrEmpty(group.TargetFramework) ? "(any)" : group.TargetFramework;
+            builder.AddLine($"[grey50]{groupGuide}[/][green]{Markup.Escape(fwLabel)}[/] [grey50]({group.Packages.Count})[/]");
+
+            if (group.Packages.Count == 0)
             {
-                if (nugetData.Dependencies.Count > 1)
+                builder.AddLine($"[grey50]{groupPipe}{Last}[/][grey50](no dependencies)[/]");
+            }
+            else
+            {
+                for (var di = 0; di < group.Packages.Count; di++)
                 {
-                    builder.AddLine($"[grey50]  {Markup.Escape(group.TargetFramework)}:[/]");
-                }
-                foreach (var dep in group.Packages.Take(10))
-                {
-                    var range = string.IsNullOrEmpty(dep.VersionRange) ? "" : $" ({dep.VersionRange})";
-                    builder.AddLine($"[grey70]    {Markup.Escape(dep.Id)}[/][grey50]{range}[/]");
-                }
-                if (group.Packages.Count > 10)
-                {
-                    builder.AddLine($"[grey50]    ... and {group.Packages.Count - 10} more[/]");
+                    var dep = group.Packages[di];
+                    var isLastDep = di == group.Packages.Count - 1;
+                    var depGuide = isLastDep ? Last : Branch;
+                    var versionInfo = string.IsNullOrEmpty(dep.VersionRange) ? "" : $" [grey50]({dep.VersionRange})[/]";
+                    builder.AddLine($"[grey50]{groupPipe}{depGuide}[/][grey70]{Markup.Escape(dep.Id)}[/]{versionInfo}");
                 }
             }
         }
 
         builder.AddEmptyLine();
-
         return builder.WithMargin(1, 0, 0, 0).Build();
+    }
+
+    private static MarkupControl BuildVersionsPanel(NuGetPackage nugetData, PackageReference package)
+    {
+        var builder = Controls.Markup();
+
+        if (!nugetData.Versions.Any())
+        {
+            builder.AddLine("[grey50]No version history available[/]");
+            builder.AddEmptyLine();
+            return builder.WithMargin(1, 0, 0, 0).Build();
+        }
+
+        const int MaxRecentVersions = 20;
+        var totalCount = nugetData.Versions.Count;
+        var recentVersions = nugetData.Versions.Take(MaxRecentVersions).ToList();
+        var installedVersion = package.Version;
+        var installedInRecent = recentVersions.Contains(installedVersion);
+
+        // Header
+        if (totalCount > MaxRecentVersions)
+            builder.AddLine($"[grey70 bold]Available Versions ({totalCount} total, showing {MaxRecentVersions} most recent):[/]");
+        else
+            builder.AddLine($"[grey70 bold]Available Versions ({totalCount}):[/]");
+
+        builder.AddEmptyLine();
+
+        // Show recent versions
+        foreach (var version in recentVersions)
+        {
+            if (version == installedVersion)
+                builder.AddLine($"[cyan1 bold]{Markup.Escape(version)}[/] [green]◄ installed[/]");
+            else if (version == nugetData.Version)
+                builder.AddLine($"[yellow]{Markup.Escape(version)}[/] [grey50](latest)[/]");
+            else
+                builder.AddLine($"[grey70]{Markup.Escape(version)}[/]");
+        }
+
+        // If installed version is not in recent versions, show it separately
+        if (!installedInRecent && totalCount > MaxRecentVersions)
+        {
+            builder.AddEmptyLine();
+            builder.AddLine("[grey50]─────────────[/]");
+            builder.AddLine($"[cyan1 bold]{Markup.Escape(installedVersion)}[/] [green]◄ installed[/]");
+            builder.AddLine("[grey50]─────────────[/]");
+        }
+
+        // Show count of older versions
+        if (totalCount > MaxRecentVersions)
+        {
+            var olderCount = totalCount - MaxRecentVersions;
+            builder.AddEmptyLine();
+            builder.AddLine($"[grey50]... and {olderCount} older version{(olderCount == 1 ? "" : "s")}[/]");
+        }
+
+        builder.AddEmptyLine();
+        return builder.WithMargin(1, 0, 0, 0).Build();
+    }
+
+    private static MarkupControl BuildWhatsNewPanel(NuGetPackage nugetData, PackageReference package)
+    {
+        var builder = Controls.Markup();
+
+        // Version comparison
+        if (package.IsOutdated && !string.IsNullOrEmpty(package.LatestVersion))
+        {
+            builder.AddLine($"[grey70 bold]Version Comparison:[/]");
+            builder.AddLine($"[grey70]Installed:[/] [yellow]{Markup.Escape(package.Version)}[/]");
+            builder.AddLine($"[grey70]Latest:[/]    [green]{Markup.Escape(package.LatestVersion)}[/]");
+            builder.AddEmptyLine();
+
+            // Simple breaking change heuristic based on semver major version diff
+            var breakingChange = DetectPotentialBreakingChange(package.Version, package.LatestVersion);
+            if (breakingChange)
+            {
+                builder.AddLine($"[red bold]⚠ Potential Breaking Change[/]");
+                builder.AddLine($"[yellow]Major version changed. Review changelog before updating.[/]");
+                builder.AddEmptyLine();
+            }
+
+            // Count intermediate versions
+            var intermediateCount = CountIntermediateVersions(nugetData.Versions, package.Version, package.LatestVersion);
+            if (intermediateCount > 0)
+            {
+                builder.AddLine($"[grey70]{intermediateCount} version(s) between installed and latest[/]");
+                builder.AddEmptyLine();
+            }
+        }
+        else
+        {
+            builder.AddLine($"[green bold]✓ You are on the latest version[/]");
+            builder.AddEmptyLine();
+        }
+
+        // Release notes
+        if (!string.IsNullOrEmpty(nugetData.ReleaseNotes))
+        {
+            builder.AddLine($"[grey70 bold]Release Notes:[/]");
+            builder.AddLine($"[grey70]{Markup.Escape(nugetData.ReleaseNotes)}[/]");
+        }
+        else
+        {
+            builder.AddLine($"[grey50]No release notes available for this version.[/]");
+        }
+
+        builder.AddEmptyLine();
+        return builder.WithMargin(1, 0, 0, 0).Build();
+    }
+
+
+    private static bool DetectPotentialBreakingChange(string installedVersion, string latestVersion)
+    {
+        var installedMajor = GetMajorVersion(installedVersion);
+        var latestMajor = GetMajorVersion(latestVersion);
+        return installedMajor >= 0 && latestMajor >= 0 && latestMajor > installedMajor;
+    }
+
+    private static int GetMajorVersion(string version)
+    {
+        if (string.IsNullOrEmpty(version)) return -1;
+        var dotIndex = version.IndexOf('.');
+        var majorStr = dotIndex >= 0 ? version.Substring(0, dotIndex) : version;
+        return int.TryParse(majorStr, out var major) ? major : -1;
+    }
+
+    private static int CountIntermediateVersions(List<string> versions, string installed, string latest)
+    {
+        var installedIdx = versions.IndexOf(installed);
+        var latestIdx = versions.IndexOf(latest);
+        if (installedIdx < 0 || latestIdx < 0) return 0;
+
+        // Versions list is typically newest-first
+        var low = Math.Min(installedIdx, latestIdx);
+        var high = Math.Max(installedIdx, latestIdx);
+        return Math.Max(0, high - low - 1);
     }
 
     private static IWindowControl BuildActionToolbar(
@@ -287,8 +465,8 @@ public static class InteractivePackageDetailsBuilder
             .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
-        // Change Version button
-        var versionBtn = Controls.Button("[cyan1]Version[/] [grey78](Ctrl+V)[/]")
+        // Select Version button
+        var versionBtn = Controls.Button("[cyan1]Select Version[/] [grey78](Ctrl+V)[/]")
             .OnClick((s, e) => onChangeVersion())
             .Enabled(hasVersions)
             .WithBackgroundColor(Color.Grey30)
