@@ -42,7 +42,7 @@ public static class ProjectDashboardBuilder
             foreach (var pkg in topPackages)
             {
                 var statusIndicator = pkg.IsOutdated ? "[yellow]⚠[/]" : "[green]✓[/]";
-                lines.Add($"{statusIndicator} [grey70]{Markup.Escape(pkg.Id)} {pkg.Version}[/]");
+                lines.Add($"{statusIndicator} [grey70]{Markup.Escape(pkg.Id)} {Markup.Escape(pkg.Version)}[/]");
             }
 
             if (project.Packages.Count > 5)
@@ -59,7 +59,7 @@ public static class ProjectDashboardBuilder
             foreach (var pkg in outdatedPackages.Take(5))
             {
                 lines.Add($"[yellow]⚠ {Markup.Escape(pkg.Id)}[/]");
-                lines.Add($"  [grey70]{pkg.Version} → {pkg.LatestVersion} available[/]");
+                lines.Add($"  [grey70]{Markup.Escape(pkg.Version)} → {Markup.Escape(pkg.LatestVersion ?? "unknown")} available[/]");
             }
 
             if (outdatedPackages.Count > 5)
