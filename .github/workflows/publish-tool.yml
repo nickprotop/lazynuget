@@ -30,11 +30,8 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Build
-        run: dotnet build -c Release --no-restore
-
       - name: Pack
-        run: dotnet pack -c Release --no-build -p:Version=${{ steps.version.outputs.VERSION }}
+        run: dotnet pack -c Release --no-restore -p:Version=${{ steps.version.outputs.VERSION }}
 
       - name: Publish to NuGet.org
         run: dotnet nuget push bin/Release/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
