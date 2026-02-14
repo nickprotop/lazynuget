@@ -137,11 +137,11 @@ public static class InteractiveDashboardBuilder
             string versionInfo;
             if (pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion))
             {
-                versionInfo = $"[grey70]{pkg.Version}[/] [yellow]→ {pkg.LatestVersion}[/]";
+                versionInfo = $"[grey70]{Markup.Escape(pkg.Version)}[/] [yellow]→ {Markup.Escape(pkg.LatestVersion)}[/]";
             }
             else
             {
-                versionInfo = $"[grey70]{pkg.Version}[/]";
+                versionInfo = $"[grey70]{Markup.Escape(pkg.Version)}[/]";
             }
 
             table.AddRow(status, $"[grey70]{packageName}[/]", versionInfo);

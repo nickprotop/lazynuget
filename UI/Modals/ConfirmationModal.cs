@@ -10,10 +10,23 @@ using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 namespace LazyNuGet.UI.Modals;
 
 /// <summary>
-/// Async confirmation dialog (Yes/No) using TaskCompletionSource pattern
+/// Async confirmation dialog (Yes/No) using ModalBase pattern
 /// </summary>
-public static class ConfirmationModal
+public class ConfirmationModal : ModalBase<bool>
 {
+    private readonly string _title;
+    private readonly string _message;
+    private readonly string _yesText;
+    private readonly string _noText;
+
+    private ConfirmationModal(string title, string message, string yesText, string noText)
+    {
+        _title = title;
+        _message = message;
+        _yesText = yesText;
+        _noText = noText;
+    }
+
     /// <summary>
     /// Show a confirmation dialog and await the user's choice
     /// </summary>
@@ -25,55 +38,47 @@ public static class ConfirmationModal
         string noText = "No",
         Window? parentWindow = null)
     {
-        var tcs = new TaskCompletionSource<bool>();
-        bool confirmed = false;
+        var modal = new ConfirmationModal(title, message, yesText, noText);
+        return modal.ShowAsync(windowSystem, parentWindow);
+    }
 
-        var modal = new WindowBuilder(windowSystem)
-            .WithTitle(title)
-            .Centered()
-            .WithSize(50, 14)
-            .AsModal()
-            .WithBorderStyle(BorderStyle.Single)
-            .WithBorderColor(Color.Grey35)
-            .Resizable(true)
-            .Movable(true)
-            .Minimizable(false)
-            .WithColors(ColorScheme.StatusBarBackground, Color.Grey93)
-            .Build();
+    protected override string GetTitle() => _title;
 
+    protected override (int width, int height) GetSize() => (50, 14);
+
+    protected override BorderStyle GetBorderStyle() => BorderStyle.Single;
+
+    protected override Color GetBorderColor() => Color.Grey35;
+
+    protected override bool GetDefaultResult() => false;
+
+    protected override void BuildContent()
+    {
         // Title header
-        modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(title)}[/]")
+        Modal.AddControl(Controls.Markup()
+            .AddLine($"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(_title)}[/]")
             .WithAlignment(HorizontalAlignment.Center)
             .WithMargin(1, 1, 0, 0)
             .Build());
 
         // Message body
-        modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(message)}[/]")
+        Modal.AddControl(Controls.Markup()
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_message)}[/]")
             .WithAlignment(HorizontalAlignment.Center)
             .WithMargin(1, 1, 1, 1)
             .Build());
 
         // Buttons
-        var yesButton = Controls.Button($"  {yesText} (Y)  ")
+        var yesButton = Controls.Button($"  {_yesText} (Y)  ")
             .WithAlignment(HorizontalAlignment.Center)
             .WithMargin(2, 0, 0, 0)
-            .OnClick((s, e) =>
-            {
-                confirmed = true;
-                modal.Close();
-            })
+            .OnClick((s, e) => CloseWithResult(true))
             .Build();
 
-        var noButton = Controls.Button($"  {noText} (N)  ")
+        var noButton = Controls.Button($"  {_noText} (N)  ")
             .WithAlignment(HorizontalAlignment.Center)
             .WithMargin(2, 0, 0, 0)
-            .OnClick((s, e) =>
-            {
-                confirmed = false;
-                modal.Close();
-            })
+            .OnClick((s, e) => CloseWithResult(false))
             .Build();
 
         var buttonGrid = Controls.HorizontalGrid()
@@ -82,42 +87,37 @@ public static class ConfirmationModal
             .Column(col => col.Width(2))
             .Column(col => col.Add(noButton))
             .Build();
-        modal.AddControl(buttonGrid);
+        Modal.AddControl(buttonGrid);
 
         // Bottom rule + hint
-        modal.AddControl(Controls.RuleBuilder()
+        Modal.AddControl(Controls.RuleBuilder()
             .StickyBottom()
             .WithColor(ColorScheme.RuleColor)
             .Build());
 
-        modal.AddControl(Controls.Markup()
+        Modal.AddControl(Controls.Markup()
             .AddLine($"[{ColorScheme.MutedMarkup}]Y:Confirm  N/Esc:Cancel[/]")
             .WithAlignment(HorizontalAlignment.Center)
             .StickyBottom()
             .Build());
+    }
 
-        // Keyboard handling
-        modal.KeyPressed += (sender, e) =>
+    protected override void OnKeyPressed(object? sender, KeyPressedEventArgs e)
+    {
+        if (e.KeyInfo.Key == ConsoleKey.Y || e.KeyInfo.Key == ConsoleKey.Enter)
         {
-            if (e.KeyInfo.Key == ConsoleKey.Y || e.KeyInfo.Key == ConsoleKey.Enter)
-            {
-                confirmed = true;
-                modal.Close();
-                e.Handled = true;
-            }
-            else if (e.KeyInfo.Key == ConsoleKey.N || e.KeyInfo.Key == ConsoleKey.Escape)
-            {
-                confirmed = false;
-                modal.Close();
-                e.Handled = true;
-            }
-        };
-
-        modal.OnClosed += (s, e) => tcs.TrySetResult(confirmed);
-
-        windowSystem.AddWindow(modal);
-        windowSystem.SetActiveWindow(modal);
-
-        return tcs.Task;
+            CloseWithResult(true);
+            e.Handled = true;
+        }
+        else if (e.KeyInfo.Key == ConsoleKey.N)
+        {
+            CloseWithResult(false);
+            e.Handled = true;
+        }
+        else
+        {
+            // Let base handle Escape
+            base.OnKeyPressed(sender, e);
+        }
     }
 }

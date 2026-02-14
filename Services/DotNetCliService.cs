@@ -276,6 +276,7 @@ public class DotNetCliService
                 catch (Exception ex)
                 {
                     _logService?.LogError($"Error killing process: {ex.Message}", ex, "CLI");
+                    // Non-fatal: process may have already exited
                 }
             });
 
@@ -331,6 +332,7 @@ public class DotNetCliService
             }
 
             var errorMessage = !string.IsNullOrWhiteSpace(stderr) ? stderr : stdout;
+            // Log command failure with exit code
             _logService?.LogError($"Command failed (exit {process.ExitCode}): {errorMessage}", null, "CLI");
             return OperationResult.FromError(
                 $"dotnet {arguments.Split(' ')[0]} failed",
@@ -344,6 +346,7 @@ public class DotNetCliService
         }
         catch (Exception ex)
         {
+            // Catch unexpected exceptions (e.g., process start failure)
             _logService?.LogError($"Failed to execute dotnet command: {ex.Message}", ex, "CLI");
             return OperationResult.FromError(
                 "Failed to execute dotnet command",

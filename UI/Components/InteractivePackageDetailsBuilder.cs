@@ -27,7 +27,7 @@ public static class InteractivePackageDetailsBuilder
         // Package header
         var header = Controls.Markup()
             .AddLine($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]")
-            .AddLine($"[grey70]Installed: {package.Version}[/]")
+            .AddLine($"[grey70]Installed: {Markup.Escape(package.Version)}[/]")
             .AddEmptyLine()
             .WithMargin(1, 1, 0, 0)
             .Build();
@@ -100,7 +100,7 @@ public static class InteractivePackageDetailsBuilder
         if (package.IsOutdated && !string.IsNullOrEmpty(package.LatestVersion))
         {
             builder.AddLine($"[yellow bold]Update Available[/]");
-            builder.AddLine($"[grey70]Latest Version: {package.LatestVersion}[/]");
+            builder.AddLine($"[grey70]Latest Version: {Markup.Escape(package.LatestVersion)}[/]");
             builder.AddEmptyLine();
         }
         else if (!package.IsOutdated)
@@ -228,7 +228,7 @@ public static class InteractivePackageDetailsBuilder
             foreach (var version in nugetData.Versions.Take(5))
             {
                 var indicator = version == package.Version ? "◄ installed" : "";
-                builder.AddLine($"[grey70]{version} {indicator}[/]");
+                builder.AddLine($"[grey70]{Markup.Escape(version)} {indicator}[/]");
             }
             if (nugetData.Versions.Count > 5)
             {
@@ -249,7 +249,7 @@ public static class InteractivePackageDetailsBuilder
                 }
                 foreach (var dep in group.Packages.Take(10))
                 {
-                    var range = string.IsNullOrEmpty(dep.VersionRange) ? "" : $" ({Markup.Escape(dep.VersionRange)})";
+                    var range = string.IsNullOrEmpty(dep.VersionRange) ? "" : $" ({dep.VersionRange})";
                     builder.AddLine($"[grey70]    {Markup.Escape(dep.Id)}[/][grey50]{range}[/]");
                 }
                 if (group.Packages.Count > 10)

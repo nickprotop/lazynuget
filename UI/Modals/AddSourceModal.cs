@@ -12,32 +12,35 @@ using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 namespace LazyNuGet.UI.Modals;
 
 /// <summary>
-/// Sub-modal for adding a custom NuGet source
+/// Sub-modal for adding a custom NuGet source using ModalBase pattern
 /// </summary>
-public static class AddSourceModal
+public class AddSourceModal : ModalBase<CustomNuGetSource?>
 {
-    public static Task<CustomNuGetSource?> ShowAsync(
+    private PromptControl? _nameInput;
+    private PromptControl? _urlInput;
+
+    private AddSourceModal()
+    {
+    }
+
+    public new static Task<CustomNuGetSource?> ShowAsync(
         ConsoleWindowSystem windowSystem,
         Window? parentWindow = null)
     {
-        var tcs = new TaskCompletionSource<CustomNuGetSource?>();
+        var instance = new AddSourceModal();
+        return ((ModalBase<CustomNuGetSource?>)instance).ShowAsync(windowSystem, parentWindow);
+    }
 
-        PromptControl? nameInput = null;
-        PromptControl? urlInput = null;
+    protected override string GetTitle() => "Add NuGet Source";
 
-        var modal = new WindowBuilder(windowSystem)
-            .WithTitle("Add NuGet Source")
-            .Centered()
-            .WithSize(70, 16)
-            .AsModal()
-            .Resizable(false)
-            .Movable(true)
-            .Minimizable(false)
-            .WithColors(ColorScheme.WindowBackground, Color.Grey93)
-            .WithBorderStyle(BorderStyle.DoubleLine)
-            .WithBorderColor(ColorScheme.BorderColor)
-            .Build();
+    protected override (int width, int height) GetSize() => (70, 16);
 
+    protected override bool GetResizable() => false;
+
+    protected override CustomNuGetSource? GetDefaultResult() => null;
+
+    protected override void BuildContent()
+    {
         // Header
         var header = Controls.Markup()
             .AddLine($"[{ColorScheme.PrimaryMarkup} bold]Add Custom NuGet Source[/]")
@@ -51,7 +54,7 @@ public static class AddSourceModal
             .WithMargin(2, 0, 2, 0)
             .Build();
 
-        nameInput = Controls.Prompt("Name: ")
+        _nameInput = Controls.Prompt("Name: ")
             .WithInput("")
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithMargin(2, 0, 2, 1)
@@ -63,7 +66,7 @@ public static class AddSourceModal
             .WithMargin(2, 0, 2, 0)
             .Build();
 
-        urlInput = Controls.Prompt("URL: ")
+        _urlInput = Controls.Prompt("URL: ")
             .WithInput("")
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithMargin(2, 0, 2, 1)
@@ -93,37 +96,8 @@ public static class AddSourceModal
             .WithFocusedForegroundColor(Color.White)
             .Build();
 
-        void TrySubmit()
-        {
-            var name = nameInput?.Input?.Trim() ?? "";
-            var url = urlInput?.Input?.Trim() ?? "";
-
-            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(url))
-            {
-                windowSystem.NotificationStateService.ShowNotification(
-                    "Validation Error",
-                    "Both name and URL are required.",
-                    NotificationSeverity.Warning,
-                    timeout: 3000,
-                    parentWindow: modal);
-                return;
-            }
-
-            modal.Close();
-            tcs.TrySetResult(new CustomNuGetSource
-            {
-                Name = name,
-                Url = url,
-                IsEnabled = true
-            });
-        }
-
         okButton.Click += (s, e) => TrySubmit();
-        cancelButton.Click += (s, e) =>
-        {
-            modal.Close();
-            tcs.TrySetResult(null);
-        };
+        cancelButton.Click += (s, e) => CloseWithResult(null);
 
         var buttonGrid = Controls.HorizontalGrid()
             .WithAlignment(HorizontalAlignment.Center)
@@ -135,32 +109,41 @@ public static class AddSourceModal
         buttonGrid.Margin = new Margin(0, 0, 0, 0);
 
         // Assemble modal
-        modal.AddControl(header);
-        modal.AddControl(nameLabel);
-        modal.AddControl(nameInput);
-        modal.AddControl(urlLabel);
-        modal.AddControl(urlInput);
-        modal.AddControl(separator);
-        modal.AddControl(buttonGrid);
+        Modal.AddControl(header);
+        Modal.AddControl(nameLabel);
+        Modal.AddControl(_nameInput);
+        Modal.AddControl(urlLabel);
+        Modal.AddControl(_urlInput);
+        Modal.AddControl(separator);
+        Modal.AddControl(buttonGrid);
+    }
 
-        // Keyboard handling
-        modal.KeyPressed += (s, e) =>
+    protected override void SetInitialFocus()
+    {
+        _nameInput?.SetFocus(true, FocusReason.Programmatic);
+    }
+
+    private void TrySubmit()
+    {
+        var name = _nameInput?.Input?.Trim() ?? "";
+        var url = _urlInput?.Input?.Trim() ?? "";
+
+        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(url))
         {
-            if (e.KeyInfo.Key == ConsoleKey.Escape)
-            {
-                modal.Close();
-                tcs.TrySetResult(null);
-                e.Handled = true;
-            }
-        };
+            WindowSystem.NotificationStateService.ShowNotification(
+                "Validation Error",
+                "Both name and URL are required.",
+                NotificationSeverity.Warning,
+                timeout: 3000,
+                parentWindow: Modal);
+            return;
+        }
 
-        modal.OnClosed += (s, e) => tcs.TrySetResult(null);
-
-        // Show modal
-        windowSystem.AddWindow(modal);
-        windowSystem.SetActiveWindow(modal);
-        nameInput.SetFocus(true, FocusReason.Programmatic);
-
-        return tcs.Task;
+        CloseWithResult(new CustomNuGetSource
+        {
+            Name = name,
+            Url = url,
+            IsEnabled = true
+        });
     }
 }

@@ -1,68 +1,62 @@
-using System.Xml.Linq;
 using LazyNuGet.Models;
+using LazyNuGet.Repositories;
 using SharpConsoleUI.Logging;
 
 namespace LazyNuGet.Services;
 
 /// <summary>
-/// Service for parsing .NET project files and extracting package references
+/// Service for parsing .NET project files - provides business logic on top of ProjectRepository.
+/// Converts raw project data into rich ProjectInfo models.
 /// </summary>
 public class ProjectParserService
 {
+    private readonly ProjectRepository _repository;
     private readonly ILogService? _logService;
 
     public ProjectParserService(ILogService? logService = null)
     {
+        _repository = new ProjectRepository();
         _logService = logService;
     }
+
     /// <summary>
     /// Parse a project file and extract metadata and package references
     /// </summary>
     public async Task<ProjectInfo?> ParseProjectAsync(string projectFilePath)
     {
-        return await Task.Run(() =>
+        try
         {
-            try
+            var projectData = await _repository.ReadProjectFileAsync(projectFilePath);
+            if (projectData == null)
             {
-                var doc = XDocument.Load(projectFilePath);
-                var project = new ProjectInfo
-                {
-                    Name = Path.GetFileNameWithoutExtension(projectFilePath),
-                    FilePath = projectFilePath,
-                    LastModified = File.GetLastWriteTime(projectFilePath)
-                };
-
-                // Extract target framework
-                var targetFramework = doc.Descendants("TargetFramework").FirstOrDefault()?.Value
-                                   ?? doc.Descendants("TargetFrameworks").FirstOrDefault()?.Value?.Split(';').FirstOrDefault()
-                                   ?? "unknown";
-                project.TargetFramework = targetFramework;
-
-                // Extract package references
-                var packageReferences = doc.Descendants("PackageReference");
-                foreach (var packageRef in packageReferences)
-                {
-                    var id = packageRef.Attribute("Include")?.Value;
-                    var version = packageRef.Attribute("Version")?.Value
-                               ?? packageRef.Element("Version")?.Value;
-
-                    if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(version))
-                    {
-                        project.Packages.Add(new PackageReference
-                        {
-                            Id = id,
-                            Version = version
-                        });
-                    }
-                }
-
-                return project;
-            }
-            catch (Exception ex)
-            {
-                _logService?.LogError($"Failed to parse project file: {projectFilePath}", ex, "Parser");
+                _logService?.LogError($"Failed to parse project file: {projectFilePath}", null, "Parser");
                 return null;
             }
-        });
+
+            var project = new ProjectInfo
+            {
+                Name = projectData.Name,
+                FilePath = projectData.FilePath,
+                LastModified = projectData.LastModified,
+                TargetFramework = projectData.TargetFramework
+            };
+
+            // Convert package references to PackageReference models
+            foreach (var pkgRef in projectData.PackageReferences)
+            {
+                project.Packages.Add(new PackageReference
+                {
+                    Id = pkgRef.Id,
+                    Version = pkgRef.Version
+                });
+            }
+
+            return project;
+        }
+        catch (Exception ex)
+        {
+            _logService?.LogError($"Failed to parse project file: {projectFilePath}", ex, "Parser");
+            return null;
+        }
     }
 }

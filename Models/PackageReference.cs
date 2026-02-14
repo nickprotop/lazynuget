@@ -17,8 +17,8 @@ public class PackageReference
         get
         {
             if (HasVulnerability) return "[red]⚠ VULNERABLE[/]";
-            if (IsOutdated) return $"[yellow]⚠ {Version} → {LatestVersion}[/]";
-            return $"[green]✓ {Version} (latest)[/]";
+            if (IsOutdated) return $"[yellow]⚠ {Spectre.Console.Markup.Escape(Version)} → {Spectre.Console.Markup.Escape(LatestVersion ?? "")}[/]";
+            return $"[green]✓ {Spectre.Console.Markup.Escape(Version)} (latest)[/]";
         }
     }
 }

@@ -1,21 +1,23 @@
-using System.Text.Json;
 using LazyNuGet.Models;
+using LazyNuGet.Repositories;
 
 namespace LazyNuGet.Services;
 
 /// <summary>
-/// Service for tracking and persisting NuGet operation history
+/// Service for tracking and persisting NuGet operation history - provides business logic on top of HistoryRepository.
+/// Manages history limits and provides query capabilities.
 /// </summary>
 public class OperationHistoryService
 {
+    private readonly HistoryRepository _repository;
     private readonly List<OperationHistoryEntry> _history = new();
-    private readonly string _historyFilePath;
     private const int MaxHistorySize = 100;
 
     public OperationHistoryService(string configDirectory)
     {
-        _historyFilePath = Path.Combine(configDirectory, "operation_history.json");
-        LoadHistory();
+        var historyFilePath = Path.Combine(configDirectory, "operation_history.json");
+        _repository = new HistoryRepository(historyFilePath);
+        _ = LoadHistoryAsync();
     }
 
     /// <summary>
@@ -25,13 +27,13 @@ public class OperationHistoryService
     {
         _history.Insert(0, entry); // Most recent first
 
-        // Trim to max size
+        // Apply business rule: Trim to max size
         if (_history.Count > MaxHistorySize)
         {
             _history.RemoveRange(MaxHistorySize, _history.Count - MaxHistorySize);
         }
 
-        SaveHistory();
+        _ = SaveHistoryAsync();
     }
 
     /// <summary>
@@ -56,39 +58,57 @@ public class OperationHistoryService
     public void ClearHistory()
     {
         _history.Clear();
-        SaveHistory();
+        _ = SaveHistoryAsync();
     }
 
-    private void LoadHistory()
+    /// <summary>
+    /// Get the 10 most recently installed packages (unique by PackageId)
+    /// </summary>
+    public async Task<List<RecentPackageInfo>> GetRecentInstallsAsync()
     {
-        try
-        {
-            if (File.Exists(_historyFilePath))
+        // Filter for successful Add operations
+        var installOperations = _history
+            .Where(e => e.Type == OperationType.Add && e.Success && !string.IsNullOrEmpty(e.PackageId))
+            .ToList();
+
+        // Group by PackageId and take the most recent entry for each package
+        var recentPackages = installOperations
+            .GroupBy(e => e.PackageId)
+            .Select(g => g.OrderByDescending(e => e.Timestamp).First())
+            .OrderByDescending(e => e.Timestamp)
+            .Take(10)
+            .Select(e => new RecentPackageInfo
             {
-                var json = File.ReadAllText(_historyFilePath);
-                var loaded = JsonSerializer.Deserialize<List<OperationHistoryEntry>>(json);
-                if (loaded != null)
-                {
-                    _history.AddRange(loaded);
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Ignore errors loading history - start fresh
-        }
+                PackageId = e.PackageId!,
+                Version = e.PackageVersion ?? "latest",
+                LastInstalled = e.Timestamp,
+                ProjectName = e.ProjectName
+            })
+            .ToList();
+
+        return await Task.FromResult(recentPackages);
     }
 
-    private void SaveHistory()
+    private async Task LoadHistoryAsync()
     {
-        try
-        {
-            var json = JsonSerializer.Serialize(_history, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_historyFilePath, json);
-        }
-        catch (Exception)
-        {
-            // Ignore errors saving history - not critical
-        }
+        var loaded = await _repository.LoadHistoryAsync();
+        _history.Clear();
+        _history.AddRange(loaded);
     }
+
+    private async Task SaveHistoryAsync()
+    {
+        await _repository.SaveHistoryAsync(_history);
+    }
+}
+
+/// <summary>
+/// Information about a recently installed package
+/// </summary>
+public class RecentPackageInfo
+{
+    public string PackageId { get; set; } = "";
+    public string Version { get; set; } = "";
+    public DateTime LastInstalled { get; set; }
+    public string ProjectName { get; set; } = "";
 }

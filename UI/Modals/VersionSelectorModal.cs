@@ -15,7 +15,7 @@ namespace LazyNuGet.UI.Modals;
 /// <summary>
 /// Modal for selecting a specific package version to install
 /// </summary>
-public static class VersionSelectorModal
+public class VersionSelectorModal : ModalBase<string?>
 {
     private enum FilterVersionType
     {
@@ -23,164 +23,66 @@ public static class VersionSelectorModal
         StableOnly,
         PreReleaseOnly
     }
-    public static async Task<string?> ShowAsync(
+
+    // Parameters
+    private readonly PackageReference _package;
+    private readonly List<string> _availableVersions;
+
+    // Filter state
+    private FilterVersionType _filterType = FilterVersionType.All;
+    private List<string> _currentVersions = new();
+
+    // Controls
+    private ListControl? _versionList;
+    private MarkupControl? _statusLabel;
+    private MarkupControl? _filterLabel;
+    private ButtonControl? _selectButton;
+    private ButtonControl? _clearFilterButton;
+    private ButtonControl? _closeButton;
+    private DropdownControl? _versionTypeDropdown;
+
+    // Event handler references for cleanup (CRITICAL for memory leak prevention)
+    private EventHandler<int>? _versionTypeDropdownHandler;
+    private EventHandler<int>? _versionListSelectedIndexChangedHandler;
+    private EventHandler<ListItem>? _versionListItemActivatedHandler;
+    private EventHandler<ButtonControl>? _selectButtonClickHandler;
+    private EventHandler<ButtonControl>? _clearFilterButtonClickHandler;
+    private EventHandler<ButtonControl>? _closeButtonClickHandler;
+
+    private VersionSelectorModal(PackageReference package, List<string> availableVersions)
+    {
+        _package = package;
+        _availableVersions = availableVersions;
+    }
+
+    public static Task<string?> ShowAsync(
         ConsoleWindowSystem windowSystem,
         PackageReference package,
         List<string> availableVersions,
         Window? parentWindow = null)
     {
-        var tcs = new TaskCompletionSource<string?>();
-        string? selectedVersion = null;
+        var instance = new VersionSelectorModal(package, availableVersions);
+        return ((ModalBase<string?>)instance).ShowAsync(windowSystem, parentWindow);
+    }
 
-        // Filter state
-        var filterType = FilterVersionType.All;
+    protected override string GetTitle() => $"Select Version - {_package.Id}";
+    protected override (int width, int height) GetSize() => (100, 30);
+    protected override BorderStyle GetBorderStyle() => BorderStyle.DoubleLine;
+    protected override Color GetBorderColor() => ColorScheme.BorderColor;
+    protected override string? GetDefaultResult() => null;
 
-        // Controls
-        ListControl? versionList = null;
-        MarkupControl? statusLabel = null;
-        MarkupControl? filterLabel = null;
-        ButtonControl? selectButton = null;
-        ButtonControl? clearFilterButton = null;
-        DropdownControl? versionTypeDropdown = null;
-
-        var currentVersions = new List<string>();
-        var allVersions = availableVersions;
-
-        var modal = new WindowBuilder(windowSystem)
-            .WithTitle($"Select Version - {package.Id}")
-            .Centered()
-            .WithSize(100, 30)
-            .AsModal()
-            .WithBorderStyle(BorderStyle.DoubleLine)
-            .WithBorderColor(ColorScheme.BorderColor)
-            .Resizable(true)
-            .Movable(true)
-            .Minimizable(false)
-            .WithColors(ColorScheme.WindowBackground, Color.Grey93)
-            .Build();
-
-        // ── Helper: Refresh versions list based on filters ────────────
-        void RefreshVersionsList()
-        {
-            // Apply version type filtering
-            var filtered = filterType switch
-            {
-                FilterVersionType.StableOnly => allVersions.Where(v => !v.Contains('-')),
-                FilterVersionType.PreReleaseOnly => allVersions.Where(v => v.Contains('-')),
-                _ => allVersions
-            };
-
-            currentVersions = filtered.ToList();
-
-            // Update status label
-            UpdateStatusLabel();
-
-            // Populate list
-            versionList?.ClearItems();
-
-            if (!currentVersions.Any())
-            {
-                var emptyItem = new ListItem($"[{ColorScheme.MutedMarkup}]No versions found matching current filters[/]");
-                emptyItem.Tag = null;
-                versionList?.AddItem(emptyItem);
-                if (selectButton != null) selectButton.IsEnabled = false;
-                return;
-            }
-
-            foreach (var version in currentVersions)
-            {
-                var displayText = BuildEnhancedVersionDisplay(version, package.Version, currentVersions);
-                var listItem = new ListItem(displayText);
-                listItem.Tag = version;
-                versionList?.AddItem(listItem);
-            }
-
-            // Set initial selection to current version if found
-            var currentIndex = currentVersions.FindIndex(v =>
-                string.Equals(v, package.Version, StringComparison.OrdinalIgnoreCase));
-            if (currentIndex >= 0 && versionList != null)
-                versionList.SelectedIndex = currentIndex;
-
-            // Enable/disable select button based on selection
-            var selectedVer = versionList?.SelectedItem?.Tag as string;
-            if (selectButton != null) selectButton.IsEnabled = selectedVer != null;
-        }
-
-        void UpdateStatusLabel()
-        {
-            var stableCount = currentVersions.Count(v => !v.Contains('-'));
-            var preReleaseCount = currentVersions.Count(v => v.Contains('-'));
-            var filterText = filterType switch
-            {
-                FilterVersionType.StableOnly => "Stable Only",
-                FilterVersionType.PreReleaseOnly => "Pre-release Only",
-                _ => "All Versions"
-            };
-
-            statusLabel?.SetContent(new List<string> {
-                $"[{ColorScheme.SecondaryMarkup}]Showing:[/] [{ColorScheme.PrimaryMarkup}]{filterText}[/] " +
-                $"[{ColorScheme.MutedMarkup}]({currentVersions.Count} versions - " +
-                $"{stableCount} stable, {preReleaseCount} pre-release)[/]"
-            });
-        }
-
-        string BuildEnhancedVersionDisplay(string version, string currentVersion, List<string> versions)
-        {
-            var isCurrent = string.Equals(version, currentVersion, StringComparison.OrdinalIgnoreCase);
-            var isLatest = version == versions.FirstOrDefault();
-            var isPreRelease = version.Contains('-');
-
-            var badges = new List<string>();
-            if (isLatest)
-                badges.Add("[green]✓ Latest[/]");
-            if (isCurrent)
-                badges.Add("[cyan1]● Current[/]");
-            if (isPreRelease)
-            {
-                // Extract pre-release tag (beta, rc, preview, etc.)
-                var dashIndex = version.IndexOf('-');
-                if (dashIndex > 0 && dashIndex < version.Length - 1)
-                {
-                    var preReleaseTag = version.Substring(dashIndex + 1);
-                    // Take only the tag part (e.g., "beta1" -> "beta")
-                    var tagParts = preReleaseTag.Split('.', '-');
-                    var tag = tagParts[0];
-                    badges.Add($"[yellow]● {tag}[/]");
-                }
-            }
-
-            var badgeText = badges.Any() ? " " + string.Join(" ", badges) : "";
-            var icon = isPreRelease ? "🔶" : "📦";
-
-            return $"{icon} [{ColorScheme.PrimaryMarkup}]{Markup.Escape(version)}[/]{badgeText}";
-        }
-
-        void HandleSelect()
-        {
-            if (versionList?.SelectedItem?.Tag is string ver)
-            {
-                selectedVersion = ver;
-                modal.Close();
-            }
-        }
-
-        void HandleClearFilter()
-        {
-            filterType = FilterVersionType.All;
-            if (versionTypeDropdown != null) versionTypeDropdown.SelectedIndex = 0;
-            RefreshVersionsList();
-        }
-
+    protected override void BuildContent()
+    {
         // ── Header ────────────────────────────────────────────
         var header = Controls.Markup()
             .AddLine($"[{ColorScheme.PrimaryMarkup} bold]Select Version[/]")
-            .AddLine($"[{ColorScheme.SecondaryMarkup}]Choose a version for {Markup.Escape(package.Id)}[/]")
-            .AddLine($"[{ColorScheme.MutedMarkup}]Current version: {Markup.Escape(package.Version)}[/]")
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]Choose a version for {Markup.Escape(_package.Id)}[/]")
+            .AddLine($"[{ColorScheme.MutedMarkup}]Current version: {Markup.Escape(_package.Version)}[/]")
             .WithMargin(2, 2, 2, 0)
             .Build();
 
         // ── Status label ──────────────────────────────────────
-        statusLabel = Controls.Markup($"[{ColorScheme.MutedMarkup}]Loading versions...[/]")
+        _statusLabel = Controls.Markup($"[{ColorScheme.MutedMarkup}]Loading versions...[/]")
             .WithMargin(2, 1, 2, 0)
             .Build();
 
@@ -191,7 +93,7 @@ public static class VersionSelectorModal
         separator1.Margin = new Margin(2, 1, 2, 0);
 
         // ── Version filter dropdown ───────────────────────────
-        versionTypeDropdown = new DropdownControl(string.Empty, new[]
+        _versionTypeDropdown = new DropdownControl(string.Empty, new[]
         {
             "All Versions (F1)",
             "Stable Only (F2)",
@@ -201,9 +103,9 @@ public static class VersionSelectorModal
             SelectedIndex = 0
         };
 
-        versionTypeDropdown.SelectedIndexChanged += (s, idx) =>
+        _versionTypeDropdownHandler = (s, idx) =>
         {
-            filterType = idx switch
+            _filterType = idx switch
             {
                 0 => FilterVersionType.All,
                 1 => FilterVersionType.StableOnly,
@@ -212,16 +114,17 @@ public static class VersionSelectorModal
             };
             RefreshVersionsList();
         };
+        _versionTypeDropdown.SelectedIndexChanged += _versionTypeDropdownHandler;
 
         // ── Filter toolbar ────────────────────────────────────
         var filterToolbar = Controls.Toolbar()
-            .Add(versionTypeDropdown)
+            .Add(_versionTypeDropdown)
             .WithSpacing(2)
             .WithMargin(2, 0, 2, 1)
             .Build();
 
         // ── Version list ──────────────────────────────────────
-        versionList = Controls.List()
+        _versionList = Controls.List()
             .SimpleMode()
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill)
@@ -231,14 +134,24 @@ public static class VersionSelectorModal
             .WithMargin(2, 0, 2, 1)
             .Build();
 
-        versionList.SelectedIndexChanged += (s, idx) =>
+        _versionListSelectedIndexChangedHandler = (s, idx) =>
         {
-            var selectedVer = versionList.SelectedItem?.Tag as string;
-            if (selectButton != null) selectButton.IsEnabled = selectedVer != null;
+            var selectedVer = _versionList?.SelectedItem?.Tag as string;
+            if (_selectButton != null) _selectButton.IsEnabled = selectedVer != null;
         };
+        _versionList.SelectedIndexChanged += _versionListSelectedIndexChangedHandler;
+
+        _versionListItemActivatedHandler = (sender, item) =>
+        {
+            if (item?.Tag is string ver)
+            {
+                CloseWithResult(ver);
+            }
+        };
+        _versionList.ItemActivated += _versionListItemActivatedHandler;
 
         // ── Filter help label ─────────────────────────────────
-        filterLabel = Controls.Markup()
+        _filterLabel = Controls.Markup()
             .AddLine($"[{ColorScheme.MutedMarkup}]F1:All  F2:Stable  F3:Pre-release  |  S:Select  C:Clear Filter  Esc:Close[/]")
             .WithMargin(2, 1, 2, 0)
             .StickyBottom()
@@ -252,131 +165,264 @@ public static class VersionSelectorModal
         separator2.Margin = new Margin(2, 0, 2, 0);
 
         // ── Action buttons ────────────────────────────────────
-        selectButton = Controls.Button("[grey93]Select (S)[/]")
+        _selectButton = Controls.Button("[grey93]Select (S)[/]")
             .WithBackgroundColor(Color.Grey30)
             .WithForegroundColor(Color.Grey93)
             .WithFocusedBackgroundColor(Color.DarkGreen)
             .WithFocusedForegroundColor(Color.White)
             .Build();
-        selectButton.IsEnabled = false;
-        selectButton.Click += (s, e) => HandleSelect();
+        _selectButton.IsEnabled = false;
+        _selectButtonClickHandler = (s, e) => HandleSelect();
+        _selectButton.Click += _selectButtonClickHandler;
 
-        clearFilterButton = Controls.Button("[grey93]Clear Filter (C)[/]")
+        _clearFilterButton = Controls.Button("[grey93]Clear Filter (C)[/]")
             .WithBackgroundColor(Color.Grey30)
             .WithForegroundColor(Color.Grey93)
             .WithFocusedBackgroundColor(Color.DarkOrange)
             .WithFocusedForegroundColor(Color.White)
             .Build();
-        clearFilterButton.Click += (s, e) => HandleClearFilter();
+        _clearFilterButtonClickHandler = (s, e) => HandleClearFilter();
+        _clearFilterButton.Click += _clearFilterButtonClickHandler;
 
-        var closeButton = Controls.Button("[grey93]Close (Esc)[/]")
+        _closeButton = Controls.Button("[grey93]Close (Esc)[/]")
             .WithBackgroundColor(Color.Grey30)
             .WithForegroundColor(Color.Grey93)
             .WithFocusedBackgroundColor(Color.Grey50)
             .WithFocusedForegroundColor(Color.White)
             .Build();
-        closeButton.Click += (s, e) => modal.Close();
+        _closeButtonClickHandler = (s, e) => CloseWithResult(null);
+        _closeButton.Click += _closeButtonClickHandler;
 
         var buttonToolbar = Controls.HorizontalGrid()
             .WithAlignment(HorizontalAlignment.Center)
             .StickyBottom()
-            .Column(col => col.Add(selectButton))
+            .Column(col => col.Add(_selectButton))
             .Column(col => col.Width(2))
-            .Column(col => col.Add(clearFilterButton))
+            .Column(col => col.Add(_clearFilterButton))
             .Column(col => col.Width(2))
-            .Column(col => col.Add(closeButton))
+            .Column(col => col.Add(_closeButton))
             .Build();
         buttonToolbar.Margin = new Margin(0, 0, 0, 0);
 
         // ── Assemble modal ────────────────────────────────────
-        modal.AddControl(header);
-        modal.AddControl(statusLabel);
-        modal.AddControl(separator1);
-        modal.AddControl(filterToolbar);
-        modal.AddControl(versionList);
-        modal.AddControl(filterLabel);
-        modal.AddControl(separator2);
-        modal.AddControl(buttonToolbar);
-
-        // ── Item activation (double-click or Enter on list) ──
-        versionList.ItemActivated += (sender, item) =>
-        {
-            if (item?.Tag is string ver)
-            {
-                selectedVersion = ver;
-                modal.Close();
-            }
-        };
-
-        // ── Keyboard handling ─────────────────────────────────
-        modal.KeyPressed += (sender, e) =>
-        {
-            if (e.KeyInfo.Key == ConsoleKey.Escape)
-            {
-                selectedVersion = null;
-                modal.Close();
-                e.Handled = true;
-                return;
-            }
-
-            if (e.AlreadyHandled) { e.Handled = true; return; }
-
-            // F-key filtering
-            if (e.KeyInfo.Key == ConsoleKey.F1)
-            {
-                filterType = FilterVersionType.All;
-                if (versionTypeDropdown != null) versionTypeDropdown.SelectedIndex = 0;
-                RefreshVersionsList();
-                e.Handled = true;
-            }
-            else if (e.KeyInfo.Key == ConsoleKey.F2)
-            {
-                filterType = FilterVersionType.StableOnly;
-                if (versionTypeDropdown != null) versionTypeDropdown.SelectedIndex = 1;
-                RefreshVersionsList();
-                e.Handled = true;
-            }
-            else if (e.KeyInfo.Key == ConsoleKey.F3)
-            {
-                filterType = FilterVersionType.PreReleaseOnly;
-                if (versionTypeDropdown != null) versionTypeDropdown.SelectedIndex = 2;
-                RefreshVersionsList();
-                e.Handled = true;
-            }
-            // Action shortcuts
-            else if (e.KeyInfo.Key == ConsoleKey.S && selectButton != null && selectButton.IsEnabled)
-            {
-                HandleSelect();
-                e.Handled = true;
-            }
-            else if (e.KeyInfo.Key == ConsoleKey.C)
-            {
-                HandleClearFilter();
-                e.Handled = true;
-            }
-            else if (e.KeyInfo.Key == ConsoleKey.Enter)
-            {
-                // Select from version list
-                if (versionList.SelectedItem?.Tag is string ver)
-                {
-                    selectedVersion = ver;
-                    modal.Close();
-                    e.Handled = true;
-                }
-            }
-        };
-
-        modal.OnClosed += (s, e) => tcs.TrySetResult(selectedVersion);
-
-        // Show modal
-        windowSystem.AddWindow(modal);
-        windowSystem.SetActiveWindow(modal);
+        Modal.AddControl(header);
+        Modal.AddControl(_statusLabel);
+        Modal.AddControl(separator1);
+        Modal.AddControl(filterToolbar);
+        Modal.AddControl(_versionList);
+        Modal.AddControl(_filterLabel);
+        Modal.AddControl(separator2);
+        Modal.AddControl(buttonToolbar);
 
         // Initial load
         RefreshVersionsList();
+    }
 
-        versionList.SetFocus(true, FocusReason.Programmatic);
+    protected override void SetInitialFocus()
+    {
+        _versionList?.SetFocus(true, FocusReason.Programmatic);
+    }
 
-        return await tcs.Task;
+    protected override void OnKeyPressed(object? sender, KeyPressedEventArgs e)
+    {
+        if (e.AlreadyHandled)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // F-key filtering
+        if (e.KeyInfo.Key == ConsoleKey.F1)
+        {
+            _filterType = FilterVersionType.All;
+            if (_versionTypeDropdown != null) _versionTypeDropdown.SelectedIndex = 0;
+            RefreshVersionsList();
+            e.Handled = true;
+        }
+        else if (e.KeyInfo.Key == ConsoleKey.F2)
+        {
+            _filterType = FilterVersionType.StableOnly;
+            if (_versionTypeDropdown != null) _versionTypeDropdown.SelectedIndex = 1;
+            RefreshVersionsList();
+            e.Handled = true;
+        }
+        else if (e.KeyInfo.Key == ConsoleKey.F3)
+        {
+            _filterType = FilterVersionType.PreReleaseOnly;
+            if (_versionTypeDropdown != null) _versionTypeDropdown.SelectedIndex = 2;
+            RefreshVersionsList();
+            e.Handled = true;
+        }
+        // Action shortcuts
+        else if (e.KeyInfo.Key == ConsoleKey.S && _selectButton != null && _selectButton.IsEnabled)
+        {
+            HandleSelect();
+            e.Handled = true;
+        }
+        else if (e.KeyInfo.Key == ConsoleKey.C)
+        {
+            HandleClearFilter();
+            e.Handled = true;
+        }
+        else if (e.KeyInfo.Key == ConsoleKey.Enter)
+        {
+            // Select from version list
+            if (_versionList?.SelectedItem?.Tag is string ver)
+            {
+                CloseWithResult(ver);
+                e.Handled = true;
+            }
+        }
+        else
+        {
+            base.OnKeyPressed(sender, e); // Handle Escape and other default keys
+        }
+    }
+
+    /// <summary>
+    /// CRITICAL: Cleanup event handlers to prevent memory leaks
+    /// </summary>
+    protected override void OnCleanup()
+    {
+        // Unsubscribe from all event handlers
+        if (_versionTypeDropdown != null && _versionTypeDropdownHandler != null)
+        {
+            _versionTypeDropdown.SelectedIndexChanged -= _versionTypeDropdownHandler;
+        }
+
+        if (_versionList != null)
+        {
+            if (_versionListSelectedIndexChangedHandler != null)
+                _versionList.SelectedIndexChanged -= _versionListSelectedIndexChangedHandler;
+            if (_versionListItemActivatedHandler != null)
+                _versionList.ItemActivated -= _versionListItemActivatedHandler;
+        }
+
+        if (_selectButton != null && _selectButtonClickHandler != null)
+        {
+            _selectButton.Click -= _selectButtonClickHandler;
+        }
+
+        if (_clearFilterButton != null && _clearFilterButtonClickHandler != null)
+        {
+            _clearFilterButton.Click -= _clearFilterButtonClickHandler;
+        }
+
+        if (_closeButton != null && _closeButtonClickHandler != null)
+        {
+            _closeButton.Click -= _closeButtonClickHandler;
+        }
+    }
+
+    // ── Helper Methods ────────────────────────────────────────
+
+    private void RefreshVersionsList()
+    {
+        // Apply version type filtering
+        var filtered = _filterType switch
+        {
+            FilterVersionType.StableOnly => _availableVersions.Where(v => !v.Contains('-')),
+            FilterVersionType.PreReleaseOnly => _availableVersions.Where(v => v.Contains('-')),
+            _ => _availableVersions
+        };
+
+        _currentVersions = filtered.ToList();
+
+        // Update status label
+        UpdateStatusLabel();
+
+        // Populate list
+        _versionList?.ClearItems();
+
+        if (!_currentVersions.Any())
+        {
+            var emptyItem = new ListItem($"[{ColorScheme.MutedMarkup}]No versions found matching current filters[/]");
+            emptyItem.Tag = null;
+            _versionList?.AddItem(emptyItem);
+            if (_selectButton != null) _selectButton.IsEnabled = false;
+            return;
+        }
+
+        foreach (var version in _currentVersions)
+        {
+            var displayText = BuildEnhancedVersionDisplay(version, _package.Version, _currentVersions);
+            var listItem = new ListItem(displayText);
+            listItem.Tag = version;
+            _versionList?.AddItem(listItem);
+        }
+
+        // Set initial selection to current version if found
+        var currentIndex = _currentVersions.FindIndex(v =>
+            string.Equals(v, _package.Version, StringComparison.OrdinalIgnoreCase));
+        if (currentIndex >= 0 && _versionList != null)
+            _versionList.SelectedIndex = currentIndex;
+
+        // Enable/disable select button based on selection
+        var selectedVer = _versionList?.SelectedItem?.Tag as string;
+        if (_selectButton != null) _selectButton.IsEnabled = selectedVer != null;
+    }
+
+    private void UpdateStatusLabel()
+    {
+        var stableCount = _currentVersions.Count(v => !v.Contains('-'));
+        var preReleaseCount = _currentVersions.Count(v => v.Contains('-'));
+        var filterText = _filterType switch
+        {
+            FilterVersionType.StableOnly => "Stable Only",
+            FilterVersionType.PreReleaseOnly => "Pre-release Only",
+            _ => "All Versions"
+        };
+
+        _statusLabel?.SetContent(new List<string> {
+            $"[{ColorScheme.SecondaryMarkup}]Showing:[/] [{ColorScheme.PrimaryMarkup}]{filterText}[/] " +
+            $"[{ColorScheme.MutedMarkup}]({_currentVersions.Count} versions - " +
+            $"{stableCount} stable, {preReleaseCount} pre-release)[/]"
+        });
+    }
+
+    private string BuildEnhancedVersionDisplay(string version, string currentVersion, List<string> versions)
+    {
+        var isCurrent = string.Equals(version, currentVersion, StringComparison.OrdinalIgnoreCase);
+        var isLatest = version == versions.FirstOrDefault();
+        var isPreRelease = version.Contains('-');
+
+        var badges = new List<string>();
+        if (isLatest)
+            badges.Add("[green]✓ Latest[/]");
+        if (isCurrent)
+            badges.Add("[cyan1]● Current[/]");
+        if (isPreRelease)
+        {
+            // Extract pre-release tag (beta, rc, preview, etc.)
+            var dashIndex = version.IndexOf('-');
+            if (dashIndex > 0 && dashIndex < version.Length - 1)
+            {
+                var preReleaseTag = version.Substring(dashIndex + 1);
+                // Take only the tag part (e.g., "beta1" -> "beta")
+                var tagParts = preReleaseTag.Split('.', '-');
+                var tag = tagParts[0];
+                badges.Add($"[yellow]● {tag}[/]");
+            }
+        }
+
+        var badgeText = badges.Any() ? " " + string.Join(" ", badges) : "";
+        var icon = isPreRelease ? "🔶" : "📦";
+
+        return $"{icon} [{ColorScheme.PrimaryMarkup}]{Markup.Escape(version)}[/]{badgeText}";
+    }
+
+    private void HandleSelect()
+    {
+        if (_versionList?.SelectedItem?.Tag is string ver)
+        {
+            CloseWithResult(ver);
+        }
+    }
+
+    private void HandleClearFilter()
+    {
+        _filterType = FilterVersionType.All;
+        if (_versionTypeDropdown != null) _versionTypeDropdown.SelectedIndex = 0;
+        RefreshVersionsList();
     }
 }

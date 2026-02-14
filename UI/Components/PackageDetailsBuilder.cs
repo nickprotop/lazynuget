@@ -15,7 +15,7 @@ public static class PackageDetailsBuilder
 
         // Package header
         lines.Add($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]");
-        lines.Add($"[grey70]Installed: {package.Version}[/]");
+        lines.Add($"[grey70]Installed: {Markup.Escape(package.Version)}[/]");
         lines.Add("");
 
         // Status section
@@ -28,7 +28,7 @@ public static class PackageDetailsBuilder
         if (package.IsOutdated && !string.IsNullOrEmpty(package.LatestVersion))
         {
             lines.Add($"[yellow bold]Update Available[/]");
-            lines.Add($"[grey70]Latest Version: {package.LatestVersion}[/]");
+            lines.Add($"[grey70]Latest Version: {Markup.Escape(package.LatestVersion)}[/]");
             lines.Add("");
         }
         else if (!package.IsOutdated)
@@ -69,7 +69,7 @@ public static class PackageDetailsBuilder
                 foreach (var version in nugetData.Versions.Take(5))
                 {
                     var indicator = version == package.Version ? "◄ installed" : "";
-                    lines.Add($"[grey70]{version} {indicator}[/]");
+                    lines.Add($"[grey70]{Markup.Escape(version)} {indicator}[/]");
                 }
                 if (nugetData.Versions.Count > 5)
                 {
