@@ -58,6 +58,10 @@ public class LazyNuGetWindow : IDisposable
     private MarkupControl? _loadingMessageControl;  // Loading message control for updates
     private ProgressBarControl? _loadingProgressBar;  // Loading progress bar
 
+    // Progress tracking for background package checks
+    private System.Threading.Timer? _checkProgressTimer;
+    private PackageCheckProgressTracker? _checkProgressTracker;
+
     // Services
     private ProjectDiscoveryService? _discoveryService;
     private ProjectParserService? _parserService;
@@ -705,11 +709,11 @@ public class LazyNuGetWindow : IDisposable
 
             _windowSystem.LogService.LogInfo($"Checking {allPackages.Count} packages for updates...", "NuGet");
 
+            // START PROGRESS ANIMATION
+            StartCheckProgressAnimation(allPackages.Count);
+
             // Use semaphore to limit concurrent API calls (max 10 at a time)
             var semaphore = new SemaphoreSlim(10, 10);
-            var completedCount = 0;
-            var lastUiUpdate = DateTime.MinValue;
-            var uiUpdateLock = new object();
 
             // Check packages in parallel with throttling
             var tasks = allPackages.Select(async package =>
@@ -723,50 +727,8 @@ public class LazyNuGetWindow : IDisposable
 
                     package.LatestVersion = latestVersion;
 
-                    // Increment completed count and update UI periodically (not on every package)
-                    lock (uiUpdateLock)
-                    {
-                        completedCount++;
-                        var now = DateTime.Now;
-                        var shouldUpdate = (now - lastUiUpdate).TotalMilliseconds >= 500 || // Every 500ms
-                                          completedCount % 5 == 0 || // Every 5 packages
-                                          completedCount == allPackages.Count; // Final update
-
-                        if (shouldUpdate)
-                        {
-                            lastUiUpdate = now;
-                            // Trigger UI refresh based on current view
-                            var currentSelection = _contextList?.SelectedIndex ?? 0;
-
-                            if (_currentViewState == ViewState.Projects)
-                            {
-                                SwitchToProjectsView();
-                                if (_contextList != null && currentSelection >= 0 && currentSelection < _projects.Count)
-                                {
-                                    _contextList.SelectedIndex = currentSelection;
-                                }
-                            }
-                            else if (_currentViewState == ViewState.Packages && _selectedProject != null)
-                            {
-                                // Refresh the current project view - just update data, don't rebuild the entire view
-                                var refreshed = _projects.FirstOrDefault(p => p.FilePath == _selectedProject.FilePath);
-                                if (refreshed != null)
-                                {
-                                    _selectedProject = refreshed;
-                                    _allInstalledPackages = new List<PackageReference>(refreshed.Packages);
-
-                                    // Refresh the package list without switching views
-                                    RefreshInstalledPackages();
-
-                                    // Restore selection
-                                    if (_contextList != null && currentSelection >= 0 && currentSelection < refreshed.Packages.Count)
-                                    {
-                                        _contextList.SelectedIndex = currentSelection;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // UPDATE PROGRESS
+                    UpdateCheckProgress();
                 }
                 catch (Exception ex)
                 {
@@ -780,10 +742,19 @@ public class LazyNuGetWindow : IDisposable
 
             await Task.WhenAll(tasks);
 
+            // STOP PROGRESS ANIMATION
+            StopCheckProgressAnimation(cancelled: false);
+
             _windowSystem.LogService.LogInfo($"Completed checking {allPackages.Count} packages", "NuGet");
+        }
+        catch (OperationCanceledException)
+        {
+            StopCheckProgressAnimation(cancelled: true);
+            _windowSystem.LogService.LogInfo("Package check cancelled", "NuGet");
         }
         catch (Exception ex)
         {
+            StopCheckProgressAnimation(cancelled: false);
             _ = _errorHandler?.HandleAsync(ex, ErrorSeverity.Info,
                 "Package Check Error", "Failed to check for outdated packages.", "NuGet", _window);
         }
@@ -1377,6 +1348,82 @@ public class LazyNuGetWindow : IDisposable
         _loadingProgressBar = null;
     }
 
+    private void StartCheckProgressAnimation(int totalPackages)
+    {
+        _checkProgressTracker = new PackageCheckProgressTracker();
+        _checkProgressTracker.Start(totalPackages);
+
+        _checkProgressTimer?.Dispose();
+
+        var spinnerFrame = 0;
+        _checkProgressTimer = new System.Threading.Timer(_ =>
+        {
+            try
+            {
+                if (_checkProgressTracker == null || !_checkProgressTracker.IsActive)
+                    return;
+
+                spinnerFrame++;
+                var message = _checkProgressTracker.GetProgressMessage(spinnerFrame);
+
+                _bottomHelpBar?.SetContent(new List<string> { message });
+                _window?.Invalidate(true);
+            }
+            catch
+            {
+                // Timer might fire after disposal, ignore
+            }
+        }, null, 0, 100); // Update every 100ms
+    }
+
+    private void StopCheckProgressAnimation(bool cancelled = false)
+    {
+        _checkProgressTimer?.Dispose();
+        _checkProgressTimer = null;
+
+        if (_checkProgressTracker == null) return;
+
+        var (completed, total) = _checkProgressTracker.GetProgress();
+        _checkProgressTracker.Stop();
+
+        string completionMessage;
+        int displayDurationMs;
+
+        if (cancelled)
+        {
+            completionMessage = $"[yellow]⚠[/] [grey70]Update check cancelled[/]";
+            displayDurationMs = 1500;
+        }
+        else
+        {
+            var outdatedCount = _checkProgressTracker.GetOutdatedCount(_projects);
+            completionMessage = $"[green]✓[/] [grey70]Checked {total} packages - {outdatedCount} outdated[/]";
+            displayDurationMs = 2000;
+        }
+
+        _bottomHelpBar?.SetContent(new List<string> { completionMessage });
+        _window?.Invalidate(true);
+
+        // Restore help text after delay
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(displayDurationMs);
+
+            if (!_filterMode && _checkProgressTracker != null && !_checkProgressTracker.IsActive)
+            {
+                _statusBarManager?.UpdateHelpBar(_currentViewState);
+                _window?.Invalidate(true);
+            }
+
+            _checkProgressTracker = null;
+        });
+    }
+
+    private void UpdateCheckProgress()
+    {
+        _checkProgressTracker?.IncrementCompleted();
+    }
+
     private async Task LoadPackageDetailsAsync(PackageReference package, CancellationToken cancellationToken)
     {
         if (_nugetService == null)
@@ -1772,6 +1819,21 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Dispose check progress timer
+        _checkProgressTimer?.Dispose();
+        _checkProgressTimer = null;
+        _checkProgressTracker = null;
+
+        // Dispose loading animation timer
+        _loadingAnimationTimer?.Dispose();
+        _loadingAnimationTimer = null;
+
+        // Dispose package load cancellation
+        _packageLoadCancellation?.Cancel();
+        _packageLoadCancellation?.Dispose();
+        _packageLoadCancellation = null;
+
         _nugetService?.Dispose();
         // Window cleanup is handled by WindowSystem
     }
