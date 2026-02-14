@@ -6,13 +6,28 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
 
-    <!-- Publishing configuration for self-contained binaries -->
+    <!-- Publishing configuration for self-contained binaries (GitHub Releases) -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>embedded</DebugType>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- Dotnet Tool Configuration (NuGet.org) -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>lazynuget</ToolCommandName>
+
+    <!-- Package Metadata -->
+    <PackageId>LazyNuGet</PackageId>
+    <Authors>Nick Protop</Authors>
+    <Description>A modern terminal UI for managing NuGet packages across multiple .NET projects. Browse projects, update packages, manage dependencies, and search NuGet.org - all from a powerful console interface.</Description>
+    <PackageTags>nuget;dotnet;tui;terminal;package-manager;console;cli</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/nickprotop/lazynuget</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/nickprotop/lazynuget</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <!-- Conditional ConsoleEx reference: use local project if available, otherwise use NuGet package -->
@@ -28,6 +43,11 @@
   <ItemGroup>
     <PackageReference Include="NuGet.Versioning" Version="7.3.0" />
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- Include files for NuGet package -->
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
 </Project>

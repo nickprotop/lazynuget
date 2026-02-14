@@ -7,6 +7,7 @@
 <div align="center">
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![NuGet](https://img.shields.io/nuget/v/LazyNuGet?logo=nuget&color=004880)](https://www.nuget.org/packages/LazyNuGet)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20|%20macOS%20|%20Windows-orange.svg)]()
 
@@ -34,16 +35,17 @@ LazyNuGet brings a fast, keyboard-driven interface to NuGet package management. 
 
 ## Quick Start
 
-Get LazyNuGet running in 3 steps:
+Get LazyNuGet running in seconds:
 
+**Option 1: .NET Global Tool** (if you have .NET 9 installed)
 ```bash
-# 1. Install LazyNuGet
+dotnet tool install --global LazyNuGet
+lazynuget
+```
+
+**Option 2: Self-contained binary** (no .NET required)
+```bash
 curl -fsSL https://raw.githubusercontent.com/nickprotop/lazynuget/main/install.sh | bash
-
-# 2. Navigate to your .NET project(s)
-cd ~/projects
-
-# 3. Run it
 lazynuget
 ```
 
@@ -86,7 +88,35 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 
 ## Installation
 
-### Linux
+### .NET Global Tool (Recommended for .NET developers)
+
+If you have .NET 9.0 or later installed:
+
+```bash
+dotnet tool install --global LazyNuGet
+```
+
+**Advantages:**
+- ✅ Single command installation
+- ✅ Automatic updates with `dotnet tool update -g LazyNuGet`
+- ✅ Works on all platforms (Windows, macOS, Linux)
+- ✅ Lightweight (~5MB vs ~60MB for self-contained)
+
+**Update:**
+```bash
+dotnet tool update --global LazyNuGet
+```
+
+**Uninstall:**
+```bash
+dotnet tool uninstall --global LazyNuGet
+```
+
+---
+
+### Self-Contained Binaries (No .NET required)
+
+#### Linux
 
 Download and install the latest release:
 
