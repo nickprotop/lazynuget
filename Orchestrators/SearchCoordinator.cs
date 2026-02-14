@@ -160,8 +160,24 @@ public class SearchCoordinator
                     var project = targetProjects[i];
                     progress.Report($"[{i + 1}/{targetProjects.Count}] Installing to {project.Name}...");
 
+                    var startTime = DateTime.Now;
                     var installResult = await _cliService.AddPackageAsync(
                         project.FilePath, package.Id, package.Version, ct, progress);
+                    var duration = DateTime.Now - startTime;
+
+                    // Record individual history entry for each project
+                    _historyService.AddEntry(new OperationHistoryEntry
+                    {
+                        Type = OperationType.Add,
+                        ProjectName = project.Name,
+                        ProjectPath = project.FilePath,
+                        PackageId = package.Id,
+                        PackageVersion = package.Version,
+                        Description = $"Install {package.Id} {package.Version} to {project.Name}",
+                        Success = installResult.Success,
+                        ErrorMessage = installResult.Success ? null : installResult.Message,
+                        Duration = duration
+                    });
 
                     if (installResult.Success)
                     {
@@ -198,7 +214,7 @@ public class SearchCoordinator
             },
             "Installing Package",
             description,
-            _historyService,
+            null, // Don't record at batch level - we're recording individually
             null,
             null,
             package.Id,
