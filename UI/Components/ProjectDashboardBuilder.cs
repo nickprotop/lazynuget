@@ -86,7 +86,7 @@ public static class ProjectDashboardBuilder
         return lines;
     }
 
-    private static string ShortenPath(string path)
+    internal static string ShortenPath(string path)
     {
         // Shorten path to fit in dashboard - show only filename or last 2 directories
         try

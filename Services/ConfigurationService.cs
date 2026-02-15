@@ -28,11 +28,15 @@ public class ConfigurationService
         WriteIndented = true
     };
 
-    private static string ConfigDir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "LazyNuGet");
+    private readonly string _configDir;
+    private string ConfigFile => Path.Combine(_configDir, "settings.json");
 
-    private static string ConfigFile => Path.Combine(ConfigDir, "settings.json");
+    public ConfigurationService(string? configDirectory = null)
+    {
+        _configDir = configDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "LazyNuGet");
+    }
 
     public LazyNuGetSettings Load()
     {
@@ -55,7 +59,7 @@ public class ConfigurationService
     {
         try
         {
-            Directory.CreateDirectory(ConfigDir);
+            Directory.CreateDirectory(_configDir);
             var json = JsonSerializer.Serialize(settings, JsonOptions);
             File.WriteAllText(ConfigFile, json);
         }

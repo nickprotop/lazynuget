@@ -94,7 +94,7 @@ public static class PackageDetailsBuilder
         return lines;
     }
 
-    private static string FormatDownloads(long downloads)
+    internal static string FormatDownloads(long downloads)
     {
         if (downloads >= 1_000_000_000)
             return $"{downloads / 1_000_000_000.0:F1}B";
@@ -105,7 +105,7 @@ public static class PackageDetailsBuilder
         return downloads.ToString();
     }
 
-    private static string WrapText(string text, int maxLength)
+    internal static string WrapText(string text, int maxLength)
     {
         if (text.Length <= maxLength)
             return text;

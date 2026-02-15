@@ -415,14 +415,14 @@ public static class InteractivePackageDetailsBuilder
     }
 
 
-    private static bool DetectPotentialBreakingChange(string installedVersion, string latestVersion)
+    internal static bool DetectPotentialBreakingChange(string installedVersion, string latestVersion)
     {
         var installedMajor = GetMajorVersion(installedVersion);
         var latestMajor = GetMajorVersion(latestVersion);
         return installedMajor >= 0 && latestMajor >= 0 && latestMajor > installedMajor;
     }
 
-    private static int GetMajorVersion(string version)
+    internal static int GetMajorVersion(string version)
     {
         if (string.IsNullOrEmpty(version)) return -1;
         var dotIndex = version.IndexOf('.');
@@ -430,7 +430,7 @@ public static class InteractivePackageDetailsBuilder
         return int.TryParse(majorStr, out var major) ? major : -1;
     }
 
-    private static int CountIntermediateVersions(List<string> versions, string installed, string latest)
+    internal static int CountIntermediateVersions(List<string> versions, string installed, string latest)
     {
         var installedIdx = versions.IndexOf(installed);
         var latestIdx = versions.IndexOf(latest);
@@ -511,7 +511,7 @@ public static class InteractivePackageDetailsBuilder
             .Build();
     }
 
-    private static string FormatDownloads(long downloads)
+    internal static string FormatDownloads(long downloads)
     {
         if (downloads >= 1_000_000_000)
             return $"{downloads / 1_000_000_000.0:F1}B";
@@ -522,7 +522,7 @@ public static class InteractivePackageDetailsBuilder
         return downloads.ToString();
     }
 
-    private static string FormatSize(long bytes)
+    internal static string FormatSize(long bytes)
     {
         if (bytes >= 1_073_741_824)
             return $"{bytes / 1_073_741_824.0:F2} GB";

@@ -215,7 +215,7 @@ public static class InteractiveDashboardBuilder
             .Build();
     }
 
-    private static string ShortenPath(string path)
+    internal static string ShortenPath(string path)
     {
         try
         {

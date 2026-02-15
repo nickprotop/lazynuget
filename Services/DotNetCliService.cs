@@ -161,7 +161,7 @@ public class DotNetCliService
         return ParseTransitiveDependencyOutput(result.Message, projectPath);
     }
 
-    private static List<ProjectDependencyTree> ParseTransitiveDependencyOutput(string output, string projectPath)
+    internal static List<ProjectDependencyTree> ParseTransitiveDependencyOutput(string output, string projectPath)
     {
         var trees = new List<ProjectDependencyTree>();
         var lines = output.Split('\n', StringSplitOptions.None);
