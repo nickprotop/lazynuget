@@ -17,6 +17,8 @@ export class TerminalBridge {
     const shell =
       os.platform() === "win32" ? options.binaryPath.replace(/\//g, "\\") : options.binaryPath;
 
+    console.log(`Starting LazyNuGet: ${shell} [${options.cwd}] (${options.cols}x${options.rows})`);
+
     this.process = pty.spawn(shell, [options.cwd], {
       name: "xterm-256color",
       cols: options.cols,
@@ -29,6 +31,8 @@ export class TerminalBridge {
       },
     });
 
+    console.log(`LazyNuGet started (PID ${this.process.pid})`);
+
     this.process.onData((data) => {
       for (const cb of this.onDataCallbacks) {
         cb(data);
@@ -36,6 +40,9 @@ export class TerminalBridge {
     });
 
     this.process.onExit(({ exitCode }) => {
+      if (exitCode !== 0) {
+        console.error(`LazyNuGet exited with code ${exitCode}`);
+      }
       for (const cb of this.onExitCallbacks) {
         cb(exitCode);
       }

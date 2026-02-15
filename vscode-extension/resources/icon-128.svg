@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#0E70C0"/>
+
+  <!-- Package box (simplified NuGet box) -->
+  <g transform="translate(64, 50)">
+    <!-- Top face -->
+    <path d="M 0,-20 L 20,-10 L 20,0 L 0,10 L -20,0 L -20,-10 Z" fill="#FFFFFF" opacity="0.95"/>
+    <!-- Right face -->
+    <path d="M 0,10 L 20,0 L 20,20 L 0,30 Z" fill="#FFFFFF" opacity="0.75"/>
+    <!-- Left face -->
+    <path d="M 0,10 L -20,0 L -20,20 L 0,30 Z" fill="#FFFFFF" opacity="0.85"/>
+  </g>
+
+  <!-- Lightning bolt (lazy/fast) -->
+  <g transform="translate(80, 75)">
+    <path d="M 0,-10 L 8,0 L 3,0 L 5,10 L -3,0 L 2,0 Z" fill="#FFD700" stroke="#FFA500" stroke-width="1"/>
+  </g>
+
+  <!-- Small "N" badge -->
+  <circle cx="45" cy="45" r="12" fill="#004880"/>
+  <text x="45" y="51" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#FFFFFF" text-anchor="middle">N</text>
+</svg>

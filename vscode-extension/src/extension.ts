@@ -6,14 +6,36 @@ import { TerminalBridge } from "./terminal-bridge";
 
 let panel: vscode.WebviewPanel | undefined;
 let bridge: TerminalBridge | undefined;
+let statusBarItem: vscode.StatusBarItem | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  const openCommand = vscode.commands.registerCommand("lazynuget.open", () => {
+  // Create status bar item
+  statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBarItem.command = "lazynuget.open";
+  statusBarItem.text = "$(package) LazyNuGet";
+  statusBarItem.tooltip = "Open LazyNuGet Package Manager";
+
+  // Only show in .NET projects
+  updateStatusBarVisibility();
+
+  // Watch for workspace changes
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => updateStatusBarVisibility()),
+    vscode.workspace.onDidOpenTextDocument(() => updateStatusBarVisibility())
+  );
+
+  context.subscriptions.push(statusBarItem);
+
+  const openCommand = vscode.commands.registerCommand("lazynuget.open", async () => {
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!folder) {
-      vscode.window.showErrorMessage(
-        "LazyNuGet: Open a folder containing .NET projects first."
+      const selection = await vscode.window.showErrorMessage(
+        "LazyNuGet requires an open folder with .NET projects",
+        "Open Folder"
       );
+      if (selection === "Open Folder") {
+        vscode.commands.executeCommand("vscode.openFolder");
+      }
       return;
     }
 
@@ -25,9 +47,16 @@ export function activate(context: vscode.ExtensionContext) {
 
     const binaryPath = resolveBinaryPath(context);
     if (!binaryPath) {
-      vscode.window.showErrorMessage(
-        "LazyNuGet: Could not find the lazynuget binary. Check the lazynuget.binaryPath setting."
+      const selection = await vscode.window.showErrorMessage(
+        "LazyNuGet binary not found. Please set the path in settings or reinstall the extension.",
+        "Open Settings",
+        "Download Binary"
       );
+      if (selection === "Open Settings") {
+        vscode.commands.executeCommand("workbench.action.openSettings", "lazynuget.binaryPath");
+      } else if (selection === "Download Binary") {
+        vscode.env.openExternal(vscode.Uri.parse("https://github.com/nickprotop/lazynuget/releases"));
+      }
       return;
     }
 
@@ -79,7 +108,17 @@ export function activate(context: vscode.ExtensionContext) {
       bridge?.dispose();
       bridge = undefined;
       panel = undefined;
+      if (statusBarItem) {
+        statusBarItem.text = "$(package) LazyNuGet";
+        statusBarItem.tooltip = "Open LazyNuGet Package Manager";
+      }
     });
+
+    // Update status bar when panel is open
+    if (statusBarItem) {
+      statusBarItem.text = "$(package) LazyNuGet $(check)";
+      statusBarItem.tooltip = "LazyNuGet is running - click to focus";
+    }
   });
 
   context.subscriptions.push(openCommand);
@@ -156,6 +195,16 @@ function getWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri
 ): string {
+  const xtermCss = webview.asWebviewUri(
+    vscode.Uri.joinPath(
+      extensionUri,
+      "node_modules",
+      "@xterm",
+      "xterm",
+      "css",
+      "xterm.css"
+    )
+  );
   const xtermJs = webview.asWebviewUri(
     vscode.Uri.joinPath(
       extensionUri,
@@ -164,6 +213,16 @@ function getWebviewHtml(
       "xterm",
       "lib",
       "xterm.js"
+    )
+  );
+  const xtermCanvasJs = webview.asWebviewUri(
+    vscode.Uri.joinPath(
+      extensionUri,
+      "node_modules",
+      "@xterm",
+      "addon-canvas",
+      "lib",
+      "addon-canvas.js"
     )
   );
   const xtermFitJs = webview.asWebviewUri(
@@ -186,6 +245,16 @@ function getWebviewHtml(
       "addon-webgl.js"
     )
   );
+  const xtermUnicodeJs = webview.asWebviewUri(
+    vscode.Uri.joinPath(
+      extensionUri,
+      "node_modules",
+      "@xterm",
+      "addon-unicode11",
+      "lib",
+      "addon-unicode11.js"
+    )
+  );
   const mainJs = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "dist", "webview", "main.js")
   );
@@ -201,15 +270,32 @@ function getWebviewHtml(
   let html = fs.readFileSync(htmlPath, "utf8");
 
   html = html.replace("{{cspSource}}", cspSource);
+  html = html.replace("{{xtermCss}}", xtermCss.toString());
   html = html.replace("{{xtermJs}}", xtermJs.toString());
+  html = html.replace("{{xtermCanvasJs}}", xtermCanvasJs.toString());
   html = html.replace("{{xtermFitJs}}", xtermFitJs.toString());
   html = html.replace("{{xtermWebglJs}}", xtermWebglJs.toString());
+  html = html.replace("{{xtermUnicodeJs}}", xtermUnicodeJs.toString());
   html = html.replace("{{mainJs}}", mainJs.toString());
 
   return html;
 }
 
+function updateStatusBarVisibility() {
+  if (!statusBarItem) return;
+
+  // Check if workspace has .NET project files
+  vscode.workspace.findFiles("**/*.{csproj,fsproj,vbproj}", "**/node_modules/**", 1).then(files => {
+    if (files.length > 0) {
+      statusBarItem?.show();
+    } else {
+      statusBarItem?.hide();
+    }
+  });
+}
+
 export function deactivate() {
   bridge?.dispose();
   panel?.dispose();
+  statusBarItem?.dispose();
 }
