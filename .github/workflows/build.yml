@@ -7,6 +7,8 @@ on:
   push:
     branches:
       - main
+    tags-ignore:
+      - '**'
 
 jobs:
   build:
@@ -41,3 +43,23 @@ jobs:
             -r ${{ matrix.rid }} \
             --self-contained true \
             -p:PublishSingleFile=true
+
+  vscode-extension:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Build extension
+        working-directory: vscode-extension
+        run: npm run build

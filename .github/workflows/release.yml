@@ -52,8 +52,97 @@ jobs:
           name: binary-${{ matrix.rid }}
           path: publish/${{ matrix.rid }}/lazynuget-*
 
-  release:
+  vscode-extension:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+        include:
+          - rid: linux-x64
+            vscode-target: linux-x64
+            binary: lazynuget-linux-x64
+          - rid: linux-arm64
+            vscode-target: linux-arm64
+            binary: lazynuget-linux-arm64
+          - rid: osx-x64
+            vscode-target: darwin-x64
+            binary: lazynuget-osx-x64
+          - rid: osx-arm64
+            vscode-target: darwin-arm64
+            binary: lazynuget-osx-arm64
+          - rid: win-x64
+            vscode-target: win32-x64
+            binary: lazynuget-win-x64.exe
+          - rid: win-arm64
+            vscode-target: win32-arm64
+            binary: lazynuget-win-arm64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.rid }}
+          path: vscode-extension/bin
+
+      - name: Prepare bundled binary
+        env:
+          BINARY: ${{ matrix.binary }}
+          RID: ${{ matrix.rid }}
+        run: |
+          cd vscode-extension/bin
+          # Rename to the standard name the extension expects
+          if [[ "$RID" == win-* ]]; then
+            mv "$BINARY" lazynuget.exe
+          else
+            mv "$BINARY" lazynuget
+            chmod +x lazynuget
+          fi
+
+      - name: Set extension version
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          cd vscode-extension
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Install dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Build extension
+        working-directory: vscode-extension
+        run: npm run build
+
+      - name: Package VSIX
+        env:
+          VSCODE_TARGET: ${{ matrix.vscode-target }}
+        run: |
+          cd vscode-extension
+          npx @vscode/vsce package --target "$VSCODE_TARGET" --no-dependencies
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.vscode-target }}
+          path: vscode-extension/*.vsix
+
+  release:
+    needs: [build, vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -64,11 +153,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Download all binary artifacts
         uses: actions/download-artifact@v4
         with:
           path: publish
           pattern: binary-*
+          merge-multiple: true
+
+      - name: Download all VSIX artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: vsix
+          pattern: vsix-*
           merge-multiple: true
 
       - name: Copy scripts
@@ -89,7 +185,8 @@ jobs:
           sha256sum lazynuget-osx-arm64 >> SHA256SUMS
           sha256sum lazynuget-win-x64.exe >> SHA256SUMS
           sha256sum lazynuget-win-arm64.exe >> SHA256SUMS
-          cd ..
+          cd ../vsix
+          sha256sum *.vsix >> ../publish/SHA256SUMS
 
       - name: Extract version from tag
         id: version
@@ -127,12 +224,19 @@ jobs:
             publish/install.ps1
             publish/uninstall.ps1
             publish/SHA256SUMS
+            vsix/*.vsix
           body: |
             # LazyNuGet ${{ steps.version.outputs.VERSION }}
 
             A terminal-based NuGet package manager for .NET projects, inspired by lazygit.
 
             ## Installation
+
+            ### VS Code Extension
+            Download the `.vsix` file for your platform and install via:
+            ```
+            code --install-extension lazynuget-<platform>.vsix
+            ```
 
             ### Linux
             ```bash
@@ -172,3 +276,17 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # TODO: Publish VSIX to VS Code Marketplace
+      # Requires VSCE_PAT secret (Personal Access Token from https://dev.azure.com)
+      # Uncomment when ready to publish:
+      #
+      # - name: Setup Node.js
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '20'
+      #
+      # - name: Publish to VS Code Marketplace
+      #   env:
+      #     VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      #   run: npx @vscode/vsce publish --packagePath vsix/*.vsix

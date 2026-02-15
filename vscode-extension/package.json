@@ -1,0 +1,76 @@
+{
+  "name": "lazynuget",
+  "displayName": "LazyNuGet",
+  "description": "A TUI-based NuGet package manager embedded in VS Code",
+  "version": "0.1.0",
+  "publisher": "lazynuget",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nickmartin1ee7/lazynuget"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "nuget",
+    "dotnet",
+    "package manager",
+    "tui"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "lazynuget.open",
+        "title": "LazyNuGet: Open Package Manager",
+        "icon": {
+          "light": "resources/icon.svg",
+          "dark": "resources/icon.svg"
+        }
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "lazynuget.open",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n",
+        "when": "workspaceFolderCount > 0"
+      }
+    ],
+    "configuration": {
+      "title": "LazyNuGet",
+      "properties": {
+        "lazynuget.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override path to the lazynuget binary. Leave empty to use the bundled binary."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "package": "vsce package",
+    "lint": "eslint src/"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.96.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.0.0"
+  }
+}
