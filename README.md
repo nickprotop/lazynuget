@@ -78,7 +78,7 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 | `Ctrl+V` | Change package version |
 | `Ctrl+X` | Remove package |
 | `Ctrl+L` | Open log viewer |
-| `PgUp/PgDn` | Scroll details panel |
+| `Ctrl+↑/↓` | Scroll details panel |
 | `Esc` | Go back / Close dialogs |
 
 ## Installation

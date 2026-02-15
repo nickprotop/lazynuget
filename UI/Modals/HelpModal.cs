@@ -62,7 +62,7 @@ public class HelpModal : ModalBase<bool>
         content.AddLine($"  [{ColorScheme.InfoMarkup}]Up/Down[/]      [{ColorScheme.SecondaryMarkup}]Navigate list items[/]");
         content.AddLine($"  [{ColorScheme.InfoMarkup}]Enter[/]        [{ColorScheme.SecondaryMarkup}]Select / drill into[/]");
         content.AddLine($"  [{ColorScheme.InfoMarkup}]Escape[/]       [{ColorScheme.SecondaryMarkup}]Go back / exit[/]");
-        content.AddLine($"  [{ColorScheme.InfoMarkup}]PgUp/PgDn[/]    [{ColorScheme.SecondaryMarkup}]Scroll details panel[/]");
+        content.AddLine($"  [{ColorScheme.InfoMarkup}]Ctrl+↑/↓[/]     [{ColorScheme.SecondaryMarkup}]Scroll details panel[/]");
         content.AddLine($"  [{ColorScheme.InfoMarkup}]Tab[/]          [{ColorScheme.SecondaryMarkup}]Cycle focus[/]");
         content.AddLine("");
 

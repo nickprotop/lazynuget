@@ -378,11 +378,31 @@ public class LazyNuGetWindow : IDisposable
 
         _window.KeyPressed += (sender, e) =>
         {
-            // Up/Down arrows: Navigate list only when list is NOT focused
-            // If list is focused, let it handle arrows itself
-            if (e.KeyInfo.Key == ConsoleKey.UpArrow && _contextList != null && _contextList.Items.Count > 0)
+            // === CTRL+UP/DOWN FOR RIGHT PANEL SCROLLING ===
+            // Must be checked before plain Up/Down (both match ConsoleKey.UpArrow)
+            if (e.KeyInfo.Key == ConsoleKey.UpArrow && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                // Check if list control is focused - if yes, let it handle the key
+                if (_detailsPanel != null && _detailsPanel.CanScrollUp)
+                {
+                    _detailsPanel.ScrollVerticalBy(-10);
+                    e.Handled = true;
+                }
+                return;
+            }
+            if (e.KeyInfo.Key == ConsoleKey.DownArrow && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                if (_detailsPanel != null && _detailsPanel.CanScrollDown)
+                {
+                    _detailsPanel.ScrollVerticalBy(10);
+                    e.Handled = true;
+                }
+                return;
+            }
+
+            // Up/Down arrows (no modifiers): Navigate list
+            // If list is focused, let it handle arrows itself
+            if (e.KeyInfo.Key == ConsoleKey.UpArrow && e.KeyInfo.Modifiers == 0 && _contextList != null && _contextList.Items.Count > 0)
+            {
                 if (_windowSystem.FocusStateService.FocusedControl == _contextList)
                 {
                     return; // List will handle it
@@ -394,9 +414,8 @@ public class LazyNuGetWindow : IDisposable
                 e.Handled = true;
                 return;
             }
-            if (e.KeyInfo.Key == ConsoleKey.DownArrow && _contextList != null && _contextList.Items.Count > 0)
+            if (e.KeyInfo.Key == ConsoleKey.DownArrow && e.KeyInfo.Modifiers == 0 && _contextList != null && _contextList.Items.Count > 0)
             {
-                // Check if list control is focused - if yes, let it handle the key
                 if (_windowSystem.FocusStateService.FocusedControl == _contextList)
                 {
                     return; // List will handle it
@@ -406,28 +425,6 @@ public class LazyNuGetWindow : IDisposable
                 if (_contextList.SelectedIndex < _contextList.Items.Count - 1)
                     _contextList.SelectedIndex++;
                 e.Handled = true;
-                return;
-            }
-
-            // === PAGE UP/DOWN FOR RIGHT PANEL SCROLLING ===
-            // Page Up/Down: Scroll right panel content when it overflows
-            // Only handle if not already handled by a focused control
-            if (e.KeyInfo.Key == ConsoleKey.PageUp && !e.AlreadyHandled)
-            {
-                if (_detailsPanel != null && _detailsPanel.CanScrollUp)
-                {
-                    _detailsPanel.ScrollVerticalBy(-10);  // Scroll up 10 lines
-                    e.Handled = true;
-                }
-                return;
-            }
-            if (e.KeyInfo.Key == ConsoleKey.PageDown && !e.AlreadyHandled)
-            {
-                if (_detailsPanel != null && _detailsPanel.CanScrollDown)
-                {
-                    _detailsPanel.ScrollVerticalBy(10);  // Scroll down 10 lines
-                    e.Handled = true;
-                }
                 return;
             }
 
@@ -1871,7 +1868,7 @@ public class LazyNuGetWindow : IDisposable
 
         if (scrollable)
         {
-            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/] [grey50](PgUp/PgDn to scroll)[/]" });
+            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/] [grey50](Ctrl+↑↓ to scroll)[/]" });
         }
         else
         {

@@ -106,7 +106,7 @@ public class StatusBarManager
 
         if (scrollable)
         {
-            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/] [grey50](PgUp/PgDn to scroll)[/]" });
+            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/] [grey50](Ctrl+↑↓ to scroll)[/]" });
         }
         else
         {
@@ -147,8 +147,8 @@ public class StatusBarManager
     {
         return viewState switch
         {
-            ViewState.Projects => $"[cyan1][Projects][/]  [cyan1]↑↓[/][grey70]:Navigate  [/][cyan1]PgUp/PgDn[/][grey70]:Scroll  [/][cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]?[/][grey70]:Help  [/][cyan1]Esc[/][grey70]:Exit[/]",
-            ViewState.Packages => $"[cyan1][Packages][/]  [cyan1]↑↓[/][grey70]:Navigate  [/][cyan1]PgUp/PgDn[/][grey70]:Scroll  [/][cyan1]F1-F4[/][grey70]:Tabs  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+F[/][grey70]:Filter  [/][cyan1]?[/][grey70]:Help  [/][cyan1]Esc[/][grey70]:Back[/]",
+            ViewState.Projects => $"[cyan1][Projects][/]  [cyan1]↑↓[/][grey70]:Navigate  [/][cyan1]Ctrl+↑↓[/][grey70]:Scroll  [/][cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]?[/][grey70]:Help  [/][cyan1]Esc[/][grey70]:Exit[/]",
+            ViewState.Packages => $"[cyan1][Packages][/]  [cyan1]↑↓[/][grey70]:Navigate  [/][cyan1]Ctrl+↑↓[/][grey70]:Scroll  [/][cyan1]F1-F4[/][grey70]:Tabs  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+F[/][grey70]:Filter  [/][cyan1]?[/][grey70]:Help  [/][cyan1]Esc[/][grey70]:Back[/]",
             _ => "[grey70]?:Help[/]"
         };
     }
