@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "publisher": "lazynuget",
   "license": "MIT",
-  "icon": "resources/icon-128.svg",
+  "icon": "resources/icon-128.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/nickmartin1ee7/lazynuget"
