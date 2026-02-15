@@ -124,6 +124,10 @@ jobs:
         working-directory: vscode-extension
         run: npm ci
 
+      - name: Rebuild native modules for Electron
+        working-directory: vscode-extension
+        run: npm run rebuild
+
       - name: Build extension
         working-directory: vscode-extension
         run: npm run build
