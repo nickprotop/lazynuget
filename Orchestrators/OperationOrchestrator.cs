@@ -204,7 +204,7 @@ public class OperationOrchestrator
         // Show update strategy modal
         var strategy = await UpdateStrategyModal.ShowAsync(
             _windowSystem,
-            outdated.Count,
+            outdated,
             project.Name,
             _parentWindow);
 
