@@ -22,7 +22,12 @@
     "package manager",
     "tui"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "workspaceContains:**/*.csproj",
+    "workspaceContains:**/*.fsproj",
+    "workspaceContains:**/*.vbproj",
+    "workspaceContains:**/*.sln"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -63,7 +68,7 @@
     "rebuild": "electron-rebuild -f -w node-pty"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.2",
+    "@electron/rebuild": "^4.0.3",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.96.0",
     "@vscode/vsce": "^3.0.0",
