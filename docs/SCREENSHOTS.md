@@ -76,3 +76,37 @@ All operations now use a unified progress modal with real-time log output, cance
 - Operation duration tracking
 - Automatic history recording
 - Works for all operations (Add, Update, Remove, Restore, Change Version, Update All)
+
+---
+
+## VS Code Extension
+
+### LazyNuGet in VS Code - Dashboard View
+
+LazyNuGet running natively inside VS Code as an editor tab with full mouse and keyboard support.
+
+![VS Code Dashboard](../vscode-extension/resources/screenshot-dashboard.png)
+
+**Features shown:**
+- Embedded terminal UI in VS Code editor tab
+- Full project tree navigation in sidebar
+- Package list with status indicators (outdated packages highlighted)
+- Quick action buttons (Install Package, Update All, Update Package, Remove Package)
+- Stats dashboard showing package counts (Total: 5, Outdated: 3)
+- Native VS Code integration with status bar
+- Full mouse and keyboard support
+
+### LazyNuGet in VS Code - Version Selection
+
+Interactive version selection dialog showing all available versions for a package from NuGet.org.
+
+![VS Code Version Selection](../vscode-extension/resources/screenshot-version-selection.png)
+
+**Features shown:**
+- Modal version selection dialog
+- Scrollable list of available versions
+- Version tags and labels (e.g., "extreme")
+- Package information and description
+- Action buttons for version management
+- Full keyboard navigation
+- Integrated with VS Code's theme

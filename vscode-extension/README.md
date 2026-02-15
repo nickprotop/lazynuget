@@ -16,9 +16,7 @@ LazyNuGet brings a fast, keyboard-and-mouse-driven interface to NuGet package ma
 
 **Browse. Update. Search.**
 
-<!-- TODO: Replace with a screenshot/GIF of LazyNuGet running inside VS Code -->
-<!-- Capture: Open VS Code with a .NET solution → Ctrl+Shift+N → screenshot the webview panel -->
-![LazyNuGet in VS Code](https://raw.githubusercontent.com/nickprotop/lazynuget/main/.github/dashboard-overview.png)
+![LazyNuGet in VS Code](https://raw.githubusercontent.com/nickprotop/lazynuget/main/vscode-extension/resources/screenshot-dashboard.png)
 
 ## How It Works
 
@@ -30,12 +28,16 @@ Under the hood, the extension spawns the LazyNuGet binary in a pseudo-terminal (
 
 1. Install the extension from the VS Code Marketplace
 2. Open a folder containing .NET projects
-3. Press `Ctrl+Shift+N` (or `Cmd+Shift+N` on macOS)
-4. LazyNuGet opens as an editor tab — navigate with keyboard or mouse
+3. The **LazyNuGet status bar** appears on the right (shows when .NET projects are detected)
+4. Click the status bar icon or press `Ctrl+Shift+N` (or `Cmd+Shift+N` on macOS)
+5. LazyNuGet opens as an editor tab — navigate with keyboard or mouse
 
 That's it. The binary is bundled with the extension — no separate installation needed.
 
-> You can also open it via the Command Palette: `LazyNuGet: Open Package Manager`
+**Ways to open:**
+- Click the **$(package) LazyNuGet** status bar item (bottom right)
+- Press `Ctrl+Shift+N` / `Cmd+Shift+N`
+- Command Palette: `LazyNuGet: Open Package Manager`
 
 ## Features
 
@@ -73,28 +75,17 @@ Full mouse support is also available — click on projects, packages, buttons, a
 
 ### Dashboard Overview
 
-The main dashboard shows your project tree on the left and package details on the right. Quickly see which packages are outdated and navigate with keyboard or mouse.
+The main dashboard shows your project tree on the left and package details on the right. Quickly see which packages are outdated and navigate with keyboard or mouse — all running natively inside VS Code.
 
-<!-- TODO: Replace with VS Code-specific screenshots showing the TUI inside the editor -->
-![Dashboard Overview](https://raw.githubusercontent.com/nickprotop/lazynuget/main/docs/screenshot-1-dashboard.png)
+![Dashboard Overview](https://raw.githubusercontent.com/nickprotop/lazynuget/main/vscode-extension/resources/screenshot-dashboard.png)
 
-### Package Details
+### Version Selection
 
-Press Enter on any package to view detailed information fetched from NuGet.org, including description, available versions, and metadata.
+Select from all available package versions with an interactive version picker, fully integrated with VS Code's interface.
 
-![Package Details](https://raw.githubusercontent.com/nickprotop/lazynuget/main/docs/screenshot-2-package-details.png)
+![Version Selection](https://raw.githubusercontent.com/nickprotop/lazynuget/main/vscode-extension/resources/screenshot-version-selection.png)
 
-### NuGet.org Search
-
-Search for new packages directly from NuGet.org with real-time results and metadata.
-
-![NuGet Search](https://raw.githubusercontent.com/nickprotop/lazynuget/main/docs/screenshot-4-search.png)
-
-### Operation History
-
-View and manage your complete NuGet operation history with filtering and retry capabilities.
-
-![Operation History](https://raw.githubusercontent.com/nickprotop/lazynuget/main/docs/screenshot-5-operation-history.png)
+For more screenshots of LazyNuGet features, see the [main documentation](https://github.com/nickprotop/lazynuget/blob/main/docs/SCREENSHOTS.md).
 
 ## Extension Settings
 
