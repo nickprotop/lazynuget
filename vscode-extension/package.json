@@ -11,7 +11,7 @@
     "url": "https://github.com/nickmartin1ee7/lazynuget"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.96.0"
   },
   "categories": [
     "Other"

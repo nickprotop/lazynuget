@@ -95,7 +95,7 @@ For more screenshots of LazyNuGet features, see the [main documentation](https:/
 
 ## Requirements
 
-- VS Code 1.85.0 or later
+- VS Code 1.96.0 or later
 - A folder containing .NET projects (.csproj, .fsproj, .vbproj)
 
 No .NET SDK is required — the LazyNuGet binary is self-contained and bundled with the extension.
