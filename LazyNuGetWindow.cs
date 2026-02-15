@@ -43,24 +43,8 @@ public class LazyNuGetWindow : IDisposable
     // State
     private string _currentFolderPath;
     private List<ProjectInfo> _projects = new();
-    private ProjectInfo? _selectedProject;
-    private ViewState _currentViewState = ViewState.Projects;
-    private List<PackageReference> _allInstalledPackages = new();  // Unfiltered packages for filtering
-    private string _packageFilter = string.Empty;  // Current filter text
-    private bool _filterMode = false;  // Whether filter mode is active
     private bool _initialLoadComplete = false;  // Track first load for welcome modal
-    private PackageDetailTab _currentDetailTab = PackageDetailTab.Overview;  // Current detail tab (F1-F5)
-    private PackageReference? _cachedPackageRef;  // Cached package for detail tab switching
-    private NuGetPackage? _cachedNuGetData;  // Cached NuGet data for detail tab switching
-    private CancellationTokenSource? _packageLoadCancellation;  // Cancel token for async package loading
-    private System.Threading.Timer? _loadingAnimationTimer;  // Timer for loading spinner animation
-    private int _spinnerFrame = 0;  // Current frame of loading spinner
-    private MarkupControl? _loadingMessageControl;  // Loading message control for updates
-    private ProgressBarControl? _loadingProgressBar;  // Loading progress bar
 
-    // Progress tracking for background package checks
-    private System.Threading.Timer? _checkProgressTimer;
-    private PackageCheckProgressTracker? _checkProgressTracker;
 
     // Services
     private ProjectDiscoveryService? _discoveryService;
@@ -77,6 +61,10 @@ public class LazyNuGetWindow : IDisposable
     private OperationOrchestrator? _operationOrchestrator;
     private StatusBarManager? _statusBarManager;
     private ModalManager? _modalManager;
+    private PackageDetailsController? _packageDetailsController;
+    private PackageFilterController? _filterController;
+    private PackageCheckController? _packageCheckController;
+    private NavigationController? _navigationController;
 
     public LazyNuGetWindow(ConsoleWindowSystem windowSystem, string folderPath, ConfigurationService? configService = null)
     {
@@ -106,7 +94,9 @@ public class LazyNuGetWindow : IDisposable
         SetupEventHandlers();
 
         // Load projects asynchronously
-        _ = LoadProjectsAsync();
+        AsyncHelper.FireAndForget(
+            () => LoadProjectsAsync(),
+            ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Load Error", "Failed to load projects.", "Init", _window));
     }
 
     private NuGetClientService CreateNuGetClientService()
@@ -211,9 +201,9 @@ public class LazyNuGetWindow : IDisposable
         // Make header clickable to go back when in Packages view (shows ← arrow)
         _leftPanelHeader.MouseClick += (s, e) =>
         {
-            if (_currentViewState == ViewState.Packages)
+            if (_navigationController?.CurrentViewState == ViewState.Packages)
             {
-                SwitchToProjectsView();
+                _navigationController?.SwitchToProjectsView();
             }
         };
 
@@ -335,6 +325,57 @@ public class LazyNuGetWindow : IDisposable
             _nugetService!,
             _currentFolderPath,
             _window);
+
+        _packageDetailsController = new PackageDetailsController(
+            _nugetService!,
+            _errorHandler,
+            _window,
+            _detailsPanel,
+            controls => UpdateDetailsPanel(controls),
+            () => _navigationController?.SelectedProject,
+            pkg => HandleUpdatePackageAsync(pkg),
+            pkg => HandleChangeVersionAsync(pkg),
+            pkg => HandleRemovePackageAsync(pkg),
+            (proj, pkg) => ShowDependencyTreeAsync(proj, pkg));
+
+        _filterController = new PackageFilterController(
+            _contextList,
+            _filterDisplay,
+            _leftPanelHeader,
+            _bottomHelpBar,
+            _statusBarManager,
+            () => _navigationController?.CurrentViewState ?? ViewState.Projects,
+            packages => _navigationController?.PopulatePackagesList(packages),
+            lines => UpdateDetailsContent(lines),
+            () => _navigationController?.HandleSelectionChanged());
+
+        _packageCheckController = new PackageCheckController(
+            _windowSystem,
+            _nugetService!,
+            _bottomHelpBar,
+            _window,
+            _statusBarManager,
+            _errorHandler,
+            () => _navigationController?.CurrentViewState ?? ViewState.Projects,
+            () => _filterController?.IsFilterMode == true,
+            () => _navigationController?.RefreshCurrentView(),
+            () => _projects);
+
+        _navigationController = new NavigationController(
+            _contextList,
+            _leftPanelHeader,
+            _statusBarManager,
+            _filterController,
+            _packageDetailsController,
+            _errorHandler,
+            _window,
+            () => _projects,
+            lines => UpdateDetailsContent(lines),
+            controls => UpdateDetailsPanel(controls),
+            proj => HandleUpdateAllAsync(proj),
+            proj => HandleRestoreAsync(proj),
+            (proj, pkg) => ShowDependencyTreeAsync(proj, pkg),
+            () => ConfirmExitAsync());
     }
 
     private async Task RefreshThreadAsync(Window window, CancellationToken ct)
@@ -349,7 +390,9 @@ public class LazyNuGetWindow : IDisposable
             try
             {
                 // Update clock and context-aware stats via StatusBarManager
-                _statusBarManager?.UpdateStatusRight(_currentViewState, _selectedProject);
+                _statusBarManager?.UpdateStatusRight(
+                    _navigationController?.CurrentViewState ?? ViewState.Projects,
+                    _navigationController?.SelectedProject);
 
                 // Panel focus indicators update automatically via FocusStateService.StateChanged event
 
@@ -437,7 +480,7 @@ public class LazyNuGetWindow : IDisposable
             // We want Escape to always mean "navigate back / exit".
             if (e.KeyInfo.Key == ConsoleKey.Escape)
             {
-                HandleEscapeKey();
+                _navigationController?.HandleEscapeKey();
                 e.Handled = true;
                 return;
             }
@@ -447,14 +490,14 @@ public class LazyNuGetWindow : IDisposable
             {
                 if (!e.AlreadyHandled)
                 {
-                    HandleEnterKey();
+                    _navigationController?.HandleEnterKey();
                 }
                 e.Handled = true;
                 return;
             }
 
             // F1-F5: Switch package detail tabs (in packages view)
-            if (_currentViewState == ViewState.Packages && HandleDetailTabShortcut(e.KeyInfo.Key))
+            if (_navigationController?.CurrentViewState == ViewState.Packages && (_packageDetailsController?.HandleDetailTabShortcut(e.KeyInfo.Key) ?? false))
             {
                 e.Handled = true;
                 return;
@@ -465,7 +508,9 @@ public class LazyNuGetWindow : IDisposable
             // ? - Show help modal
             if (e.KeyInfo.KeyChar == '?')
             {
-                _ = HelpModal.ShowAsync(_windowSystem, _window);
+                AsyncHelper.FireAndForget(
+                    () => HelpModal.ShowAsync(_windowSystem, _window),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Help Error", "Failed to show help.", "UI", _window));
                 e.Handled = true;
                 return;
             }
@@ -473,62 +518,80 @@ public class LazyNuGetWindow : IDisposable
             // Ctrl+O - Open folder
             if (e.KeyInfo.Key == ConsoleKey.O && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                _ = PromptForFolderAsync();
+                AsyncHelper.FireAndForget(
+                    () => PromptForFolderAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Critical, "Folder Error", "Failed to open folder.", "UI", _window));
                 e.Handled = true;
             }
             // Ctrl+S - Search packages
             else if (e.KeyInfo.Key == ConsoleKey.S && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                _ = ShowSearchModalAsync();
+                AsyncHelper.FireAndForget(
+                    () => ShowSearchModalAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Search Error", "Failed to show search.", "UI", _window));
                 e.Handled = true;
             }
             // Ctrl+R - Reload
             else if (e.KeyInfo.Key == ConsoleKey.R && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                _ = LoadProjectsAsync();
+                AsyncHelper.FireAndForget(
+                    () => LoadProjectsAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Reload Error", "Failed to reload projects.", "UI", _window));
                 e.Handled = true;
             }
             // Ctrl+H - Operation history
             else if (e.KeyInfo.Key == ConsoleKey.H && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                _ = ShowOperationHistoryAsync();
+                AsyncHelper.FireAndForget(
+                    () => ShowOperationHistoryAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "History Error", "Failed to show history.", "UI", _window));
                 e.Handled = true;
             }
             // Ctrl+U - Update package (in packages view) or update all (in projects view)
             else if (e.KeyInfo.Key == ConsoleKey.U && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                if (_currentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkg)
+                if (_navigationController?.CurrentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkg)
                 {
-                    _ = HandleUpdatePackageAsync(pkg);
+                    AsyncHelper.FireAndForget(
+                        () => HandleUpdatePackageAsync(pkg),
+                        ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Update Error", "Failed to update package.", "NuGet", _window));
                 }
-                else if (_currentViewState == ViewState.Projects && _contextList?.SelectedItem?.Tag is ProjectInfo proj)
+                else if (_navigationController?.CurrentViewState == ViewState.Projects && _contextList?.SelectedItem?.Tag is ProjectInfo proj)
                 {
-                    _ = HandleUpdateAllAsync(proj);
+                    AsyncHelper.FireAndForget(
+                        () => HandleUpdateAllAsync(proj),
+                        ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Update All Error", "Failed to update packages.", "NuGet", _window));
                 }
                 e.Handled = true;
             }
             // Ctrl+V - Change package version
             else if (e.KeyInfo.Key == ConsoleKey.V && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                if (_currentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkgToChange)
+                if (_navigationController?.CurrentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkgToChange)
                 {
-                    _ = HandleChangeVersionAsync(pkgToChange);
+                    AsyncHelper.FireAndForget(
+                        () => HandleChangeVersionAsync(pkgToChange),
+                        ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Version Error", "Failed to change version.", "NuGet", _window));
                 }
                 e.Handled = true;
             }
             // Ctrl+X - Remove package
             else if (e.KeyInfo.Key == ConsoleKey.X && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                if (_currentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkgToRemove)
+                if (_navigationController?.CurrentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkgToRemove)
                 {
-                    _ = HandleRemovePackageAsync(pkgToRemove);
+                    AsyncHelper.FireAndForget(
+                        () => HandleRemovePackageAsync(pkgToRemove),
+                        ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Remove Error", "Failed to remove package.", "NuGet", _window));
                 }
                 e.Handled = true;
             }
             // Ctrl+P - Settings
             else if (e.KeyInfo.Key == ConsoleKey.P && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                _ = ShowSettingsAsync();
+                AsyncHelper.FireAndForget(
+                    () => ShowSettingsAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Settings Error", "Failed to show settings.", "UI", _window));
                 e.Handled = true;
             }
             // Ctrl+D - Dependency tree
@@ -537,19 +600,21 @@ public class LazyNuGetWindow : IDisposable
                 ProjectInfo? targetProject = null;
                 PackageReference? targetPackage = null;
 
-                if (_currentViewState == ViewState.Packages && _selectedProject != null)
+                if (_navigationController?.CurrentViewState == ViewState.Packages && _navigationController?.SelectedProject != null)
                 {
-                    targetProject = _selectedProject;
+                    targetProject = _navigationController.SelectedProject;
                     targetPackage = _contextList?.SelectedItem?.Tag as PackageReference;
                 }
-                else if (_currentViewState == ViewState.Projects && _contextList?.SelectedItem?.Tag is ProjectInfo proj)
+                else if (_navigationController?.CurrentViewState == ViewState.Projects && _contextList?.SelectedItem?.Tag is ProjectInfo proj)
                 {
                     targetProject = proj;
                 }
 
                 if (targetProject != null)
                 {
-                    _ = ShowDependencyTreeAsync(targetProject, targetPackage);
+                    AsyncHelper.FireAndForget(
+                        () => ShowDependencyTreeAsync(targetProject, targetPackage),
+                        ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Dependency Error", "Failed to show dependencies.", "UI", _window));
                 }
                 e.Handled = true;
             }
@@ -562,16 +627,16 @@ public class LazyNuGetWindow : IDisposable
             // Ctrl+F - Enter filter mode (in packages view)
             else if (e.KeyInfo.Key == ConsoleKey.F && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                if (_currentViewState == ViewState.Packages)
+                if (_navigationController?.CurrentViewState == ViewState.Packages)
                 {
-                    EnterFilterMode();
+                    _filterController?.EnterFilterMode();
                 }
                 e.Handled = true;
             }
             // Handle typing in filter mode
-            else if (_filterMode && e.KeyInfo.Key != ConsoleKey.Escape)
+            else if (_filterController?.IsFilterMode == true && e.KeyInfo.Key != ConsoleKey.Escape)
             {
-                HandleFilterInput(e.KeyInfo);
+                _filterController?.HandleFilterInput(e.KeyInfo);
                 e.Handled = true;
             }
         };
@@ -581,13 +646,13 @@ public class LazyNuGetWindow : IDisposable
         {
             _contextList.SelectedIndexChanged += (s, e) =>
             {
-                HandleSelectionChanged();
+                _navigationController?.HandleSelectionChanged();
             };
 
             // List item activated (Enter key in Simple mode)
             _contextList.ItemActivated += (s, item) =>
             {
-                HandleEnterKey();
+                _navigationController?.HandleEnterKey();
             };
         }
     }
@@ -606,8 +671,9 @@ public class LazyNuGetWindow : IDisposable
         }
         catch (Exception ex)
         {
-            _ = _errorHandler?.HandleAsync(ex, ErrorSeverity.Critical,
-                "Folder Error", "Failed to open folder.", "UI", _window);
+            AsyncHelper.FireAndForget(
+                () => _errorHandler?.HandleAsync(ex, ErrorSeverity.Critical,
+                    "Folder Error", "Failed to open folder.", "UI", _window) ?? Task.CompletedTask);
         }
     }
 
@@ -618,8 +684,8 @@ public class LazyNuGetWindow : IDisposable
         try
         {
             // Remember current view context to restore after reload
-            var previousView = _currentViewState;
-            var previousProjectPath = _selectedProject?.FilePath;
+            var previousView = _navigationController?.CurrentViewState ?? ViewState.Projects;
+            var previousProjectPath = _navigationController?.SelectedProject?.FilePath;
 
             // Persist the current folder for next launch
             _configService?.TrackFolder(_currentFolderPath);
@@ -632,6 +698,8 @@ public class LazyNuGetWindow : IDisposable
             _searchCoordinator = new SearchCoordinator(_windowSystem, _nugetService, _cliService!, _historyService!, _errorHandler!, _window);
             _operationOrchestrator = new OperationOrchestrator(_windowSystem, _cliService!, _nugetService, _historyService!, _errorHandler!, _window);
             _modalManager?.SetNuGetService(_nugetService);
+            _packageDetailsController?.SetNuGetService(_nugetService);
+            _packageCheckController?.SetNuGetService(_nugetService);
             _modalManager?.SetFolderPath(_currentFolderPath);
             _statusBarManager?.SetFolderPath(_currentFolderPath);
 
@@ -679,21 +747,23 @@ public class LazyNuGetWindow : IDisposable
                 var restoredProject = _projects.FirstOrDefault(p => p.FilePath == previousProjectPath);
                 if (restoredProject != null)
                 {
-                    SwitchToPackagesView(restoredProject);
+                    _navigationController?.SwitchToPackagesView(restoredProject);
                 }
                 else
                 {
                     // Project no longer exists, go to Projects view
-                    SwitchToProjectsView();
+                    _navigationController?.SwitchToProjectsView();
                 }
             }
             else
             {
-                SwitchToProjectsView();
+                _navigationController?.SwitchToProjectsView();
             }
 
             // Check for outdated packages in the background
-            _ = CheckForOutdatedPackagesAsync();
+            AsyncHelper.FireAndForget(
+                () => _packageCheckController?.CheckForOutdatedPackagesAsync() ?? Task.CompletedTask,
+                ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Package Check Error", "Failed to check for outdated packages.", "NuGet", _window));
 
             // Show welcome modal on first load only
             if (!_initialLoadComplete)
@@ -701,463 +771,17 @@ public class LazyNuGetWindow : IDisposable
                 _initialLoadComplete = true;
                 if (_configService != null)
                 {
-                    _ = WelcomeModal.ShowIfEnabledAsync(_windowSystem, _configService, _window);
+                    AsyncHelper.FireAndForget(
+                        () => WelcomeModal.ShowIfEnabledAsync(_windowSystem, _configService, _window),
+                        ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Welcome Error", "Failed to show welcome.", "UI", _window));
                 }
             }
         }
         catch (Exception ex)
         {
-            _ = _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning,
-                "Project Load Error", "Failed to load projects.", "Projects", _window);
-        }
-    }
-
-    private async Task CheckForOutdatedPackagesAsync()
-    {
-        if (_nugetService == null) return;
-
-        try
-        {
-            // Collect all packages from all projects
-            var allPackages = _projects.SelectMany(p => p.Packages).ToList();
-            if (allPackages.Count == 0) return;
-
-            _windowSystem.LogService.LogInfo($"Checking {allPackages.Count} packages for updates...", "NuGet");
-
-            // START PROGRESS ANIMATION
-            StartCheckProgressAnimation(allPackages.Count);
-
-            // Use semaphore to limit concurrent API calls (max 10 at a time)
-            var semaphore = new SemaphoreSlim(10, 10);
-
-            // Check packages in parallel with throttling
-            var tasks = allPackages.Select(async package =>
-            {
-                await semaphore.WaitAsync();
-                try
-                {
-                    var (isOutdated, latestVersion) = await _nugetService.CheckIfOutdatedAsync(
-                        package.Id,
-                        package.Version);
-
-                    package.LatestVersion = latestVersion;
-
-                    // UPDATE PROGRESS
-                    UpdateCheckProgress();
-                }
-                catch (Exception ex)
-                {
-                    _windowSystem.LogService.LogWarning($"Failed to check {package.Id}: {ex.Message}", "NuGet");
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            });
-
-            await Task.WhenAll(tasks);
-
-            // STOP PROGRESS ANIMATION
-            StopCheckProgressAnimation(cancelled: false);
-
-            // Refresh current view to reflect updated outdated status
-            RefreshCurrentView();
-
-            _windowSystem.LogService.LogInfo($"Completed checking {allPackages.Count} packages", "NuGet");
-        }
-        catch (OperationCanceledException)
-        {
-            StopCheckProgressAnimation(cancelled: true);
-            _windowSystem.LogService.LogInfo("Package check cancelled", "NuGet");
-        }
-        catch (Exception ex)
-        {
-            StopCheckProgressAnimation(cancelled: false);
-            _ = _errorHandler?.HandleAsync(ex, ErrorSeverity.Info,
-                "Package Check Error", "Failed to check for outdated packages.", "NuGet", _window);
-        }
-    }
-
-    private void SwitchToProjectsView()
-    {
-        // Remember which project was selected so we can restore it
-        var previousProject = _selectedProject;
-
-        _currentViewState = ViewState.Projects;
-        _selectedProject = null;
-
-        // Update header to remove back arrow
-        if (_leftPanelHeader != null)
-        {
-            _leftPanelHeader.SetContent(new List<string> { "[grey70]Projects[/]" });
-        }
-
-        // Exit filter mode and hide filter display
-        _filterMode = false;
-        _packageFilter = string.Empty;
-        if (_filterDisplay != null)
-        {
-            _filterDisplay.Visible = false;
-        }
-
-        // Update panel titles and breadcrumb via StatusBarManager
-        _statusBarManager?.UpdateHeadersForProjects();
-        _statusBarManager?.UpdateBreadcrumbForProjects();
-
-        // Populate project list
-        _contextList?.ClearItems();
-        foreach (var project in _projects)
-        {
-            var displayText = $"[cyan1]{Markup.Escape(project.Name)}[/]\n" +
-                            $"[grey70]  📦 {project.Packages.Count} packages · {project.TargetFramework}[/]";
-
-            if (project.OutdatedCount > 0)
-            {
-                displayText += $"\n[yellow]  ⚠ {project.OutdatedCount} outdated[/]";
-            }
-            else
-            {
-                displayText += $"\n[green]  ✓ All up-to-date[/]";
-            }
-
-            _contextList?.AddItem(new ListItem(displayText) { Tag = project });
-        }
-
-        // Update help bar via StatusBarManager
-        _statusBarManager?.UpdateHelpBar(_currentViewState);
-
-        // Restore previous selection or default to first
-        if (_contextList != null && _contextList.Items.Count > 0)
-        {
-            var restoreIndex = 0;
-            if (previousProject != null)
-            {
-                restoreIndex = _projects.FindIndex(p => p.FilePath == previousProject.FilePath);
-                if (restoreIndex < 0) restoreIndex = 0;
-            }
-            var wasAtIndex = _contextList.SelectedIndex == restoreIndex;
-            _contextList.SelectedIndex = restoreIndex;
-            // If already at this index, event won't fire, so call manually
-            if (wasAtIndex)
-            {
-                HandleSelectionChanged();
-            }
-        }
-        else
-        {
-            UpdateDetailsContent(new List<string> { "[grey50]No projects found[/]" });
-        }
-
-        // Focus the left list by default (indicators update automatically)
-        _contextList?.SetFocus(true, FocusReason.Programmatic);
-    }
-
-    private void RefreshCurrentView()
-    {
-        if (_contextList == null) return;
-
-        var selectedIndex = _contextList.SelectedIndex;
-
-        switch (_currentViewState)
-        {
-            case ViewState.Projects:
-                // Rebuild project list items (display text includes outdated counts)
-                _contextList.ClearItems();
-                foreach (var project in _projects)
-                {
-                    var displayText = $"[cyan1]{Markup.Escape(project.Name)}[/]\n" +
-                                    $"[grey70]  📦 {project.Packages.Count} packages · {project.TargetFramework}[/]";
-
-                    if (project.OutdatedCount > 0)
-                    {
-                        displayText += $"\n[yellow]  ⚠ {project.OutdatedCount} outdated[/]";
-                    }
-                    else
-                    {
-                        displayText += $"\n[green]  ✓ All up-to-date[/]";
-                    }
-
-                    _contextList.AddItem(new ListItem(displayText) { Tag = project });
-                }
-
-                // Restore selection
-                if (selectedIndex >= 0 && selectedIndex < _contextList.Items.Count)
-                    _contextList.SelectedIndex = selectedIndex;
-                break;
-
-            case ViewState.Packages:
-                // Rebuild package list items (display text includes version status)
-                var packages = _filterMode
-                    ? _allInstalledPackages?.Where(p => p.Id.Contains(_packageFilter, StringComparison.OrdinalIgnoreCase)).ToList()
-                    : _allInstalledPackages;
-                if (packages != null)
-                {
-                    PopulatePackagesList(packages);
-                    if (selectedIndex >= 0 && selectedIndex < _contextList.Items.Count)
-                        _contextList.SelectedIndex = selectedIndex;
-                }
-                break;
-        }
-
-        // Rebuild the right panel for current selection
-        HandleSelectionChanged();
-    }
-
-    private void SwitchToPackagesView(ProjectInfo project)
-    {
-        _currentViewState = ViewState.Packages;
-        _selectedProject = project;
-
-        // Store all packages for filtering
-        _allInstalledPackages = new List<PackageReference>(project.Packages);
-
-        // Reset filter state
-        _filterMode = false;
-        _packageFilter = string.Empty;
-        if (_filterDisplay != null)
-        {
-            _filterDisplay.Visible = false;
-        }
-
-        // Update panel titles and breadcrumb via StatusBarManager
-        _statusBarManager?.UpdateHeadersForPackages(project);
-        _statusBarManager?.UpdateBreadcrumbForPackages(project);
-
-        // Show installed packages from the project
-        _allInstalledPackages = _selectedProject.Packages;
-        PopulatePackagesList(_allInstalledPackages);
-
-        // Update left panel header
-        UpdateLeftPanelHeader($"Packages ({_allInstalledPackages.Count})");
-
-        // Update help bar via StatusBarManager
-        _statusBarManager?.UpdateHelpBar(_currentViewState);
-
-        // Trigger initial selection to show package details
-        if (_contextList != null && _contextList.Items.Count > 0)
-        {
-            var wasZero = _contextList.SelectedIndex == 0;
-            _contextList.SelectedIndex = 0;
-            // If already 0, event won't fire, so call manually
-            if (wasZero)
-            {
-                HandleSelectionChanged();
-            }
-        }
-        else
-        {
-            UpdateDetailsContent(new List<string> { "[grey50]No packages in this project[/]" });
-        }
-
-        // Focus the left list by default (indicators update automatically)
-        _contextList?.SetFocus(true, FocusReason.Programmatic);
-    }
-
-    private void RefreshInstalledPackages()
-    {
-        if (_selectedProject == null) return;
-
-        // Show installed packages from current project
-        PopulatePackagesList(_allInstalledPackages);
-        UpdateLeftPanelHeader($"Packages ({_allInstalledPackages.Count})");
-
-        // Trigger selection update
-        if (_contextList != null && _contextList.Items.Count > 0)
-        {
-            var wasZero = _contextList.SelectedIndex == 0;
-            _contextList.SelectedIndex = 0;
-            if (wasZero)
-            {
-                HandleSelectionChanged();
-            }
-        }
-        else
-        {
-            UpdateDetailsContent(new List<string> { "[grey50]No packages to display[/]" });
-        }
-    }
-
-    private void UpdateLeftPanelHeader(string content)
-    {
-        if (_leftPanelHeader == null) return;
-
-        // Add back arrow for Packages view
-        var displayText = _currentViewState == ViewState.Packages
-            ? $"[cyan1]←[/] [grey70]{content}[/]"
-            : $"[grey70]{content}[/]";
-
-        _leftPanelHeader.SetContent(new List<string> { displayText });
-    }
-
-    private void PopulatePackagesList(IEnumerable<PackageReference> packages)
-    {
-        _contextList?.ClearItems();
-        foreach (var package in packages)
-        {
-            var displayText = $"[cyan1]{Markup.Escape(package.Id)}[/]\n" +
-                            $"[grey70]  {package.DisplayStatus}[/]";
-
-            _contextList?.AddItem(new ListItem(displayText) { Tag = package });
-        }
-    }
-
-    private void EnterFilterMode()
-    {
-        if (_currentViewState != ViewState.Packages) return;
-
-        _filterMode = true;
-        _packageFilter = string.Empty;
-
-        // Show filter display
-        if (_filterDisplay != null)
-        {
-            _filterDisplay.Visible = true;
-            UpdateFilterDisplay();
-        }
-
-        // Update help bar to show filter instructions
-        if (_bottomHelpBar != null)
-        {
-            _bottomHelpBar.SetContent(new List<string> {
-                $"[{ColorScheme.SecondaryMarkup}]Filter Mode:[/] Type to filter | " +
-                $"[{ColorScheme.MutedMarkup}]Backspace to delete | Esc to exit[/]"
-            });
-        }
-    }
-
-    private void ExitFilterMode()
-    {
-        _filterMode = false;
-        _packageFilter = string.Empty;
-
-        // Hide filter display
-        if (_filterDisplay != null)
-        {
-            _filterDisplay.Visible = false;
-        }
-
-        // Reset to show all packages
-        if (_selectedProject != null)
-        {
-            PopulatePackagesList(_allInstalledPackages);
-
-            // Update left panel header
-            if (_leftPanelHeader != null)
-            {
-                _leftPanelHeader.SetContent(new List<string> { $"[grey70]Packages ({_allInstalledPackages.Count})[/]" });
-            }
-        }
-
-        // Restore normal help bar
-        _statusBarManager?.UpdateHelpBar(_currentViewState);
-    }
-
-    private void HandleFilterInput(ConsoleKeyInfo keyInfo)
-    {
-        if (keyInfo.Key == ConsoleKey.Backspace)
-        {
-            if (_packageFilter.Length > 0)
-            {
-                _packageFilter = _packageFilter.Substring(0, _packageFilter.Length - 1);
-                UpdateFilterDisplay();
-                FilterInstalledPackages();
-            }
-        }
-        else if (!char.IsControl(keyInfo.KeyChar))
-        {
-            _packageFilter += keyInfo.KeyChar;
-            UpdateFilterDisplay();
-            FilterInstalledPackages();
-        }
-    }
-
-    private void UpdateFilterDisplay()
-    {
-        if (_filterDisplay == null) return;
-
-        var filterText = string.IsNullOrEmpty(_packageFilter) ? "_" : Markup.Escape(_packageFilter);
-        _filterDisplay.SetContent(new List<string> {
-            $"[{ColorScheme.MutedMarkup}]Filter: [/][{ColorScheme.PrimaryMarkup}]{filterText}[/] " +
-            $"[{ColorScheme.MutedMarkup}](Esc to clear)[/]"
-        });
-    }
-
-    private void FilterInstalledPackages()
-    {
-        if (_selectedProject == null) return;
-
-        var query = _packageFilter.ToLowerInvariant();
-
-        // Filter packages by ID containing the query
-        var filtered = string.IsNullOrWhiteSpace(query)
-            ? _allInstalledPackages
-            : _allInstalledPackages.Where(p => p.Id.ToLowerInvariant().Contains(query)).ToList();
-
-        // Update the list
-        PopulatePackagesList(filtered);
-
-        // Update left panel header with filter status
-        if (_leftPanelHeader != null)
-        {
-            var headerText = string.IsNullOrWhiteSpace(query)
-                ? $"[grey70]Packages ({_allInstalledPackages.Count})[/]"
-                : $"[grey70]Packages ({filtered.Count} of {_allInstalledPackages.Count})[/]";
-            _leftPanelHeader.SetContent(new List<string> { headerText });
-        }
-
-        // Trigger selection changed to update details panel
-        if (_contextList != null && _contextList.Items.Count > 0)
-        {
-            var wasZero = _contextList.SelectedIndex == 0;
-            _contextList.SelectedIndex = 0;
-            if (wasZero)
-            {
-                HandleSelectionChanged();
-            }
-        }
-        else
-        {
-            UpdateDetailsContent(new List<string> { "[grey50]No matching packages found[/]" });
-        }
-    }
-
-    private void HandleEnterKey()
-    {
-        if (_contextList?.SelectedItem == null) return;
-
-        switch (_currentViewState)
-        {
-            case ViewState.Projects:
-                if (_contextList.SelectedItem.Tag is ProjectInfo project)
-                {
-                    SwitchToPackagesView(project);
-                }
-                break;
-
-            case ViewState.Packages:
-                // Enter on a package -> already showing details on selection change; nothing extra needed
-                break;
-        }
-    }
-
-    private void HandleEscapeKey()
-    {
-        // If in filter mode, exit filter mode first
-        if (_filterMode)
-        {
-            ExitFilterMode();
-            return;
-        }
-
-        switch (_currentViewState)
-        {
-            case ViewState.Packages:
-                SwitchToProjectsView();
-                break;
-
-            case ViewState.Projects:
-                _ = ConfirmExitAsync();
-                break;
+            AsyncHelper.FireAndForget(
+                () => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning,
+                    "Project Load Error", "Failed to load projects.", "Projects", _window) ?? Task.CompletedTask);
         }
     }
 
@@ -1167,440 +791,22 @@ public class LazyNuGetWindow : IDisposable
         if (confirm) _windowSystem.Shutdown();
     }
 
-    private void HandleSelectionChanged()
-    {
-        if (_contextList?.SelectedItem == null) return;
-
-        switch (_currentViewState)
-        {
-            case ViewState.Projects:
-                if (_contextList.SelectedItem.Tag is ProjectInfo project)
-                {
-                    ShowProjectDashboard(project);
-                }
-                break;
-
-            case ViewState.Packages:
-                if (_contextList.SelectedItem.Tag is PackageReference package)
-                {
-                    ShowPackageDetails(package);
-                }
-                break;
-        }
-    }
-
-    private void ShowProjectDashboard(ProjectInfo project)
-    {
-        // Get outdated packages
-        var outdatedPackages = project.Packages
-            .Where(p => p.IsOutdated)
-            .ToList();
-
-        // Build interactive dashboard with real buttons
-        var controls = InteractiveDashboardBuilder.BuildInteractiveDashboard(
-            project,
-            outdatedPackages,
-            onViewPackages: () => SwitchToPackagesView(project),
-            onUpdateAll: () => HandleUpdateAll(project),
-            onRestore: () => HandleRestore(project),
-            onDeps: () => _ = ShowDependencyTreeAsync(project));
-
-        UpdateDetailsPanel(controls);
-    }
-
-    private void HandleUpdateAll(ProjectInfo project)
-    {
-        _ = HandleUpdateAllAsync(project);
-    }
-
-    private void HandleRestore(ProjectInfo project)
-    {
-        _ = HandleRestoreAsync(project);
-    }
-
-    private bool HandleDetailTabShortcut(ConsoleKey key)
-    {
-        var tab = key switch
-        {
-            ConsoleKey.F1 => PackageDetailTab.Overview,
-            ConsoleKey.F2 => PackageDetailTab.Dependencies,
-            ConsoleKey.F3 => PackageDetailTab.Versions,
-            ConsoleKey.F4 => PackageDetailTab.WhatsNew,
-            _ => (PackageDetailTab?)null
-        };
-
-        if (tab == null) return false;
-        if (tab.Value == _currentDetailTab) return true;
-
-        _currentDetailTab = tab.Value;
-        RebuildPackageDetailsForTab();
-        return true;
-    }
-
-    private void RebuildPackageDetailsForTab()
-    {
-        if (_cachedPackageRef == null) return;
-
-        var controls = InteractivePackageDetailsBuilder.BuildInteractiveDetails(
-            _cachedPackageRef,
-            _cachedNuGetData,
-            _currentDetailTab,
-            onUpdate: () => HandleUpdatePackage(_cachedPackageRef),
-            onChangeVersion: () => HandleChangeVersion(_cachedPackageRef),
-            onRemove: () => HandleRemovePackage(_cachedPackageRef),
-            onDeps: () => HandleShowPackageDeps(_cachedPackageRef));
-        UpdateDetailsPanel(controls);
-        WireUpTabClickHandlers();
-    }
-
-    private void WireUpTabClickHandlers()
-    {
-        if (_detailsPanel == null) return;
-
-        // Find the single tabBar control and wire up click handler
-        var tabBar = FindControlByName<MarkupControl>(_detailsPanel.GetChildren(), "tabBar");
-        if (tabBar != null)
-        {
-            // Remove old handler if any
-            tabBar.MouseClick -= OnTabBarClick;
-            // Add new handler
-            tabBar.MouseClick += OnTabBarClick;
-        }
-    }
-
-    private T? FindControlByName<T>(IReadOnlyList<IWindowControl> controls, string name) where T : class, IWindowControl
-    {
-        foreach (var control in controls)
-        {
-            if (control is T typed && control.Name == name)
-                return typed;
-
-            // Recursively search in container controls
-            if (control is IContainerControl container)
-            {
-                var found = FindControlByName<T>(container.GetChildren(), name);
-                if (found != null)
-                    return found;
-            }
-        }
-        return null;
-    }
-
-    private void OnTabBarClick(object? sender, MouseEventArgs e)
-    {
-        // Calculate which tab was clicked based on X position
-        // Tab layout: "F1 Overview  F2 Deps  F3 Versions  F4 What's New  F5 Details"
-        // Approximate positions (including 1-char left margin from WithMargin(1,1,1,0)):
-        // F1 Overview: 1-13, F2 Deps: 15-22, F3 Versions: 24-36, F4 What's New: 38-52, F5 Details: 54-66
-
-        var x = e.Position.X;
-        PackageDetailTab? newTab = x switch
-        {
-            >= 1 and < 14 => PackageDetailTab.Overview,
-            >= 14 and < 23 => PackageDetailTab.Dependencies,
-            >= 23 and < 37 => PackageDetailTab.Versions,
-            >= 37 and < 53 => PackageDetailTab.WhatsNew,
-            _ => null
-        };
-
-        if (newTab.HasValue && newTab.Value != _currentDetailTab)
-        {
-            _currentDetailTab = newTab.Value;
-            RebuildPackageDetailsForTab();
-        }
-    }
-
-    private void ShowPackageDetails(PackageReference package)
-    {
-        // Cancel any previous package load operation to prevent race conditions
-        _packageLoadCancellation?.Cancel();
-        _packageLoadCancellation?.Dispose();
-        _packageLoadCancellation = new CancellationTokenSource();
-
-        // Reset to overview tab and cache state
-        _currentDetailTab = PackageDetailTab.Overview;
-        _cachedPackageRef = package;
-        _cachedNuGetData = null;
-
-        // Show animated loading state
-        ShowLoadingState(package);
-
-        // Fetch package details asynchronously
-        _ = LoadPackageDetailsAsync(package, _packageLoadCancellation.Token);
-    }
-
-    private void ShowLoadingState(PackageReference package)
-    {
-        var controls = new List<IWindowControl>();
-
-        // Package header
-        var header = Controls.Markup()
-            .AddLine($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]")
-            .AddLine($"[grey70]Installed: {Markup.Escape(package.Version)}[/]")
-            .AddEmptyLine()
-            .WithMargin(1, 1, 0, 0)
-            .Build();
-        controls.Add(header);
-
-        // Loading message with spinner
-        _loadingMessageControl = Controls.Markup()
-            .AddLine($"[cyan1]⠋[/] [grey70]Connecting to NuGet.org...[/]")
-            .WithMargin(1, 1, 1, 0)
-            .Build();
-        controls.Add(_loadingMessageControl);
-
-        // Indeterminate progress bar
-        _loadingProgressBar = new ProgressBarControl
-        {
-            Value = 0,
-            MaxValue = 100,
-            Width = 50,
-            ShowPercentage = false,
-            Margin = new Margin(1, 0, 1, 1)
-        };
-        controls.Add(_loadingProgressBar);
-
-        UpdateDetailsPanel(controls);
-
-        // Start loading animation
-        StartLoadingAnimation();
-    }
-
-    private void StartLoadingAnimation()
-    {
-        _spinnerFrame = 0;
-        _loadingAnimationTimer?.Dispose();
-
-        var spinnerChars = new[] { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
-        var messages = new[]
-        {
-            "Connecting to NuGet.org...",
-            "Fetching package metadata...",
-            "Loading dependencies...",
-            "Analyzing versions..."
-        };
-
-        _loadingAnimationTimer = new System.Threading.Timer(_ =>
-        {
-            try
-            {
-                _spinnerFrame++;
-                var spinnerChar = spinnerChars[_spinnerFrame % spinnerChars.Length];
-                var messageIndex = (_spinnerFrame / 5) % messages.Length;
-                var message = messages[messageIndex];
-
-                _loadingMessageControl?.SetContent(new List<string>
-                {
-                    $"[cyan1]{spinnerChar}[/] [grey70]{message}[/]"
-                });
-
-                // Animate progress bar (fake progress for visual feedback)
-                if (_loadingProgressBar != null)
-                {
-                    _loadingProgressBar.Value = (_spinnerFrame * 3) % 100;
-                }
-
-                _window?.Invalidate(true);
-            }
-            catch
-            {
-                // Timer might fire after disposal, ignore
-            }
-        }, null, 0, 100); // Update every 100ms
-    }
-
-    private void StopLoadingAnimation()
-    {
-        _loadingAnimationTimer?.Dispose();
-        _loadingAnimationTimer = null;
-        _loadingMessageControl = null;
-        _loadingProgressBar = null;
-    }
-
-    private void StartCheckProgressAnimation(int totalPackages)
-    {
-        _checkProgressTracker = new PackageCheckProgressTracker();
-        _checkProgressTracker.Start(totalPackages);
-
-        _checkProgressTimer?.Dispose();
-
-        var spinnerFrame = 0;
-        _checkProgressTimer = new System.Threading.Timer(_ =>
-        {
-            try
-            {
-                if (_checkProgressTracker == null || !_checkProgressTracker.IsActive)
-                    return;
-
-                spinnerFrame++;
-                var message = _checkProgressTracker.GetProgressMessage(spinnerFrame);
-
-                _bottomHelpBar?.SetContent(new List<string> { message });
-                _window?.Invalidate(true);
-            }
-            catch
-            {
-                // Timer might fire after disposal, ignore
-            }
-        }, null, 0, 100); // Update every 100ms
-    }
-
-    private void StopCheckProgressAnimation(bool cancelled = false)
-    {
-        _checkProgressTimer?.Dispose();
-        _checkProgressTimer = null;
-
-        if (_checkProgressTracker == null) return;
-
-        var (completed, total) = _checkProgressTracker.GetProgress();
-        _checkProgressTracker.Stop();
-
-        string completionMessage;
-        int displayDurationMs;
-
-        if (cancelled)
-        {
-            completionMessage = $"[yellow]⚠[/] [grey70]Update check cancelled[/]";
-            displayDurationMs = 1500;
-        }
-        else
-        {
-            var outdatedCount = _checkProgressTracker.GetOutdatedCount(_projects);
-            completionMessage = $"[green]✓[/] [grey70]Checked {total} packages - {outdatedCount} outdated[/]";
-            displayDurationMs = 2000;
-        }
-
-        _bottomHelpBar?.SetContent(new List<string> { completionMessage });
-        _window?.Invalidate(true);
-
-        // Restore help text after delay
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(displayDurationMs);
-
-            if (!_filterMode && _checkProgressTracker != null && !_checkProgressTracker.IsActive)
-            {
-                _statusBarManager?.UpdateHelpBar(_currentViewState);
-                _window?.Invalidate(true);
-            }
-
-            _checkProgressTracker = null;
-        });
-    }
-
-    private void UpdateCheckProgress()
-    {
-        _checkProgressTracker?.IncrementCompleted();
-    }
-
-    private async Task LoadPackageDetailsAsync(PackageReference package, CancellationToken cancellationToken)
-    {
-        if (_nugetService == null)
-        {
-            StopLoadingAnimation();
-            return;
-        }
-
-        try
-        {
-            // Fetch package details from NuGet.org
-            var nugetData = await _nugetService.GetPackageDetailsAsync(package.Id);
-
-            // Check if this operation was cancelled (user selected a different package)
-            if (cancellationToken.IsCancellationRequested)
-            {
-                StopLoadingAnimation();
-                return;
-            }
-
-            // Update the package reference with latest version info
-            if (nugetData != null && !string.IsNullOrEmpty(nugetData.Version))
-            {
-                package.LatestVersion = nugetData.Version;
-            }
-
-            // Cache the fetched data for tab switching
-            _cachedNuGetData = nugetData;
-
-            // Check again before updating UI (user might have switched packages)
-            if (cancellationToken.IsCancellationRequested)
-            {
-                StopLoadingAnimation();
-                return;
-            }
-
-            // Stop the loading animation
-            StopLoadingAnimation();
-
-            // Rebuild the details view with the fetched data and interactive buttons
-            var controls = InteractivePackageDetailsBuilder.BuildInteractiveDetails(
-                package,
-                nugetData,
-                _currentDetailTab,
-                onUpdate: () => HandleUpdatePackage(package),
-                onChangeVersion: () => HandleChangeVersion(package),
-                onRemove: () => HandleRemovePackage(package),
-                onDeps: () => HandleShowPackageDeps(package));
-            UpdateDetailsPanel(controls);
-            WireUpTabClickHandlers();
-        }
-        catch (OperationCanceledException)
-        {
-            // Operation was cancelled, this is expected - do nothing
-            StopLoadingAnimation();
-        }
-        catch (Exception ex)
-        {
-            StopLoadingAnimation();
-
-            // Only show error if not cancelled
-            if (!cancellationToken.IsCancellationRequested)
-            {
-                _ = _errorHandler?.HandleAsync(ex, ErrorSeverity.Info,
-                    "Package Details Error", "Failed to load package details.", "NuGet", _window);
-            }
-        }
-    }
-
-    private void HandleShowPackageDeps(PackageReference package)
-    {
-        if (_selectedProject != null)
-        {
-            _ = ShowDependencyTreeAsync(_selectedProject, package);
-        }
-    }
-
-    private void HandleUpdatePackage(PackageReference package)
-    {
-        _ = HandleUpdatePackageAsync(package);
-    }
-
-    private void HandleChangeVersion(PackageReference package)
-    {
-        _ = HandleChangeVersionAsync(package);
-    }
-
-    private void HandleRemovePackage(PackageReference package)
-    {
-        _ = HandleRemovePackageAsync(package);
-    }
-
     // ──────────────────────────────────────────────────────────
-    // Phase 4: Package Operations
+    // Package Operations
     // ──────────────────────────────────────────────────────────
 
     private async Task ShowSearchModalAsync()
     {
         // Remember where search was initiated from
-        var originView = _currentViewState;
-        var originProject = _selectedProject;
+        var originView = _navigationController?.CurrentViewState ?? ViewState.Projects;
+        var originProject = _navigationController?.SelectedProject;
 
         var selectedPackage = await _searchCoordinator?.ShowSearchModalAsync()!;
         if (selectedPackage == null) return;
 
         // Show install planning modal to select target projects
         // Pass current project context: if in Packages view, pre-select only that project; if in Projects view, select all
-        var selectedProjects = await (_searchCoordinator?.ShowInstallPlanningModalAsync(selectedPackage, _projects, _selectedProject)
+        var selectedProjects = await (_searchCoordinator?.ShowInstallPlanningModalAsync(selectedPackage, _projects, _navigationController?.SelectedProject)
             ?? Task.FromResult<List<ProjectInfo>?>(null));
         if (selectedProjects == null || selectedProjects.Count == 0) return;
 
@@ -1623,17 +829,16 @@ public class LazyNuGetWindow : IDisposable
                 var refreshedProject = _projects.FirstOrDefault(p => p.FilePath == originProject.FilePath);
                 if (refreshedProject != null)
                 {
-                    _selectedProject = refreshedProject;
-                    SwitchToPackagesView(refreshedProject);
+                    _navigationController?.SwitchToPackagesView(refreshedProject);
                 }
                 else
                 {
-                    SwitchToProjectsView();
+                    _navigationController?.SwitchToProjectsView();
                 }
             }
             else
             {
-                SwitchToProjectsView();
+                _navigationController?.SwitchToProjectsView();
             }
         }
     }
@@ -1663,47 +868,51 @@ public class LazyNuGetWindow : IDisposable
         await (_operationOrchestrator?.ShowOperationHistoryAsync() ?? Task.CompletedTask);
 
         // Refresh current view after history modal closes (in case user retried operations)
-        if (_selectedProject != null)
+        var selectedProject = _navigationController?.SelectedProject;
+        if (selectedProject != null)
         {
-            await ReloadProjectAsync(_selectedProject);
+            await ReloadProjectAsync(selectedProject);
         }
     }
 
     private async Task HandleUpdatePackageAsync(PackageReference package)
     {
-        if (_selectedProject == null) return;
+        var selectedProject = _navigationController?.SelectedProject;
+        if (selectedProject == null) return;
 
-        var result = await (_operationOrchestrator?.HandleUpdatePackageAsync(package, _selectedProject) ?? Task.FromResult(new OperationResult { Success = false }));
+        var result = await (_operationOrchestrator?.HandleUpdatePackageAsync(package, selectedProject) ?? Task.FromResult(new OperationResult { Success = false }));
 
         // Refresh project after successful update
         if (result.Success)
         {
-            await ReloadProjectAndRefreshView(_selectedProject);
+            await ReloadProjectAndRefreshView(selectedProject);
         }
     }
 
     private async Task HandleRemovePackageAsync(PackageReference package)
     {
-        if (_selectedProject == null) return;
+        var selectedProject = _navigationController?.SelectedProject;
+        if (selectedProject == null) return;
 
-        var result = await (_operationOrchestrator?.HandleRemovePackageAsync(package, _selectedProject) ?? Task.FromResult(new OperationResult { Success = false }));
+        var result = await (_operationOrchestrator?.HandleRemovePackageAsync(package, selectedProject) ?? Task.FromResult(new OperationResult { Success = false }));
 
         // Refresh project after successful removal
         if (result.Success)
         {
-            await ReloadProjectAndRefreshView(_selectedProject);
+            await ReloadProjectAndRefreshView(selectedProject);
         }
     }
 
     private async Task HandleChangeVersionAsync(PackageReference package)
     {
-        if (_selectedProject == null) return;
+        var selectedProject = _navigationController?.SelectedProject;
+        if (selectedProject == null) return;
 
-        var result = await (_operationOrchestrator?.HandleChangeVersionAsync(package, _selectedProject) ?? Task.FromResult(new OperationResult { Success = false }));
+        var result = await (_operationOrchestrator?.HandleChangeVersionAsync(package, selectedProject) ?? Task.FromResult(new OperationResult { Success = false }));
 
         if (result.Success)
         {
-            await ReloadProjectAndRefreshView(_selectedProject);
+            await ReloadProjectAndRefreshView(selectedProject);
         }
     }
 
@@ -1717,13 +926,13 @@ public class LazyNuGetWindow : IDisposable
             await ReloadProjectAsync(project);
 
             // Refresh the current view
-            if (_currentViewState == ViewState.Projects)
+            if (_navigationController?.CurrentViewState == ViewState.Projects)
             {
-                SwitchToProjectsView();
+                _navigationController?.SwitchToProjectsView();
             }
-            else if (_currentViewState == ViewState.Packages)
+            else if (_navigationController?.CurrentViewState == ViewState.Packages)
             {
-                SwitchToPackagesView(project);
+                _navigationController?.SwitchToPackagesView(project);
             }
         }
     }
@@ -1733,7 +942,7 @@ public class LazyNuGetWindow : IDisposable
         var result = await (_operationOrchestrator?.HandleRestoreAsync(project) ?? Task.FromResult(new OperationResult { Success = false }));
 
         // Refresh project after successful restore
-        if (result.Success && _selectedProject?.FilePath == project.FilePath)
+        if (result.Success && _navigationController?.SelectedProject?.FilePath == project.FilePath)
         {
             await ReloadProjectAsync(project);
         }
@@ -1770,22 +979,22 @@ public class LazyNuGetWindow : IDisposable
 
         // Get the refreshed project
         var refreshed = _projects.FirstOrDefault(p => p.FilePath == project.FilePath);
-        if (refreshed != null && _currentViewState == ViewState.Packages)
+        if (refreshed != null && _navigationController?.CurrentViewState == ViewState.Packages)
         {
             // Already in packages view - just update data and refresh list
-            _selectedProject = refreshed;
-            _allInstalledPackages = new List<PackageReference>(refreshed.Packages);
+            if (_navigationController != null) _navigationController.SelectedProject = refreshed;
+            _filterController?.SetPackages(new List<PackageReference>(refreshed.Packages));
 
             // Update headers/breadcrumb
             _statusBarManager?.UpdateHeadersForPackages(refreshed);
             _statusBarManager?.UpdateBreadcrumbForPackages(refreshed);
 
             // Refresh the package list
-            RefreshInstalledPackages();
+            _navigationController?.RefreshInstalledPackages();
         }
         else
         {
-            SwitchToProjectsView();
+            _navigationController?.SwitchToProjectsView();
         }
     }
 
@@ -1826,7 +1035,7 @@ public class LazyNuGetWindow : IDisposable
 
         // Update header and help bar to reflect new content state via StatusBarManager
         UpdateRightPanelHeader();
-        _statusBarManager?.UpdateHelpBar(_currentViewState);
+        _statusBarManager?.UpdateHelpBar(_navigationController?.CurrentViewState ?? ViewState.Projects);
     }
 
     private void UpdateDetailsPanel(List<IWindowControl> controls)
@@ -1848,7 +1057,7 @@ public class LazyNuGetWindow : IDisposable
 
         // Update header and help bar to reflect new content state via StatusBarManager
         UpdateRightPanelHeader();
-        _statusBarManager?.UpdateHelpBar(_currentViewState);
+        _statusBarManager?.UpdateHelpBar(_navigationController?.CurrentViewState ?? ViewState.Projects);
     }
 
     private bool IsRightPanelScrollable()
@@ -1863,7 +1072,7 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_rightPanelHeader == null) return;
 
-        string title = _currentViewState == ViewState.Projects ? "Dashboard" : "Details";
+        string title = _navigationController?.CurrentViewState == ViewState.Projects ? "Dashboard" : "Details";
         bool scrollable = IsRightPanelScrollable();
 
         if (scrollable)
@@ -1889,19 +1098,13 @@ public class LazyNuGetWindow : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        // Dispose check progress timer
-        _checkProgressTimer?.Dispose();
-        _checkProgressTimer = null;
-        _checkProgressTracker = null;
+        // Dispose package check controller
+        _packageCheckController?.Dispose();
+        _packageCheckController = null;
 
-        // Dispose loading animation timer
-        _loadingAnimationTimer?.Dispose();
-        _loadingAnimationTimer = null;
-
-        // Dispose package load cancellation
-        _packageLoadCancellation?.Cancel();
-        _packageLoadCancellation?.Dispose();
-        _packageLoadCancellation = null;
+        // Dispose package details controller
+        _packageDetailsController?.Dispose();
+        _packageDetailsController = null;
 
         _nugetService?.Dispose();
         // Window cleanup is handled by WindowSystem

@@ -7,6 +7,7 @@ using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
+using AsyncHelper = LazyNuGet.Services.AsyncHelper;
 using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
 
@@ -254,41 +255,34 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
             if (_searchProgress != null) _searchProgress.Visible = true;
             _statusLabel?.SetContent(new List<string> { $"[{ColorScheme.MutedMarkup}]Searching...[/]" });
 
-            _ = Task.Run(async () =>
+            AsyncHelper.FireAndForget(async () =>
             {
-                try
+                // Debounce: wait 400ms before searching
+                await Task.Delay(400, ct);
+                if (ct.IsCancellationRequested) return;
+
+                var results = await _nugetService.SearchPackagesAsync(query, 15, ct);
+                if (ct.IsCancellationRequested) return;
+
+                _allResults = results;
+
+                if (_searchProgress != null) _searchProgress.Visible = false;
+
+                if (!results.Any())
                 {
-                    // Debounce: wait 400ms before searching
-                    await Task.Delay(400, ct);
-                    if (ct.IsCancellationRequested) return;
-
-                    var results = await _nugetService.SearchPackagesAsync(query, 15, ct);
-                    if (ct.IsCancellationRequested) return;
-
-                    _allResults = results;
-
-                    if (_searchProgress != null) _searchProgress.Visible = false;
-
-                    if (!results.Any())
-                    {
-                        _statusLabel?.SetContent(new List<string> { $"[{ColorScheme.MutedMarkup}]No results found[/]" });
-                        _resultsList?.ClearItems();
-                        _currentResults.Clear();
-                        if (_installButton != null) _installButton.IsEnabled = false;
-                        return;
-                    }
-
-                    RefreshResultsList();
+                    _statusLabel?.SetContent(new List<string> { $"[{ColorScheme.MutedMarkup}]No results found[/]" });
+                    _resultsList?.ClearItems();
+                    _currentResults.Clear();
+                    if (_installButton != null) _installButton.IsEnabled = false;
+                    return;
                 }
-                catch (OperationCanceledException)
-                {
-                    // Search was cancelled, ignore
-                }
-                catch
-                {
-                    if (_searchProgress != null) _searchProgress.Visible = false;
-                    _statusLabel?.SetContent(new List<string> { $"[{ColorScheme.ErrorMarkup}]Search failed[/]" });
-                }
+
+                RefreshResultsList();
+            },
+            ex =>
+            {
+                if (_searchProgress != null) _searchProgress.Visible = false;
+                _statusLabel?.SetContent(new List<string> { $"[{ColorScheme.ErrorMarkup}]Search failed[/]" });
             });
         };
         _searchInput.InputChanged += _inputChangedHandler;

@@ -1,3 +1,4 @@
+using System.Xml;
 using System.Xml.Linq;
 using LazyNuGet.Models;
 using SharpConsoleUI.Logging;
@@ -139,7 +140,7 @@ public class NuGetConfigService
         HashSet<string> disabledSources,
         Dictionary<string, (string? user, string? pass)> credentials)
     {
-        var doc = XDocument.Load(configPath);
+        var doc = LoadSecureXml(configPath);
         var root = doc.Root;
         if (root == null) return;
 
@@ -159,6 +160,12 @@ public class NuGetConfigService
                 var value = add.Attribute("value")?.Value;
                 if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(value))
                 {
+                    if (!IsValidSourceUrl(value))
+                    {
+                        _logService?.LogWarning($"Skipping source '{key}' with invalid URL: {value}", "NuGetConfig");
+                        continue;
+                    }
+
                     sources[key] = new NuGetSource
                     {
                         Name = key,
@@ -231,5 +238,27 @@ public class NuGetConfigService
                 }
             }
         }
+    }
+
+    private static XDocument LoadSecureXml(string configPath)
+    {
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null
+        };
+        using var reader = XmlReader.Create(configPath, settings);
+        return XDocument.Load(reader);
+    }
+
+    internal static bool IsValidSourceUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        // Allow local paths
+        if (Directory.Exists(url) || url.StartsWith("/") || (url.Length >= 2 && url[1] == ':'))
+            return true;
+        // Allow HTTP(S) only
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+               && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 }

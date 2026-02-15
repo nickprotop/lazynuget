@@ -155,6 +155,20 @@ public class ConfigurationServiceTests : IDisposable
     }
 
     [Fact]
+    public void Load_OversizedFile_ReturnsDefaults()
+    {
+        var service = CreateService();
+
+        // Create a file larger than 1MB
+        var oversizedContent = new string('x', 1_048_577);
+        _temp.WriteFile("settings.json", oversizedContent);
+
+        var settings = service.Load();
+        settings.Should().NotBeNull();
+        settings.LastFolderPath.Should().BeNull();
+    }
+
+    [Fact]
     public void DefaultConstructor_UsesSystemConfigDir()
     {
         // Verify the default constructor doesn't throw

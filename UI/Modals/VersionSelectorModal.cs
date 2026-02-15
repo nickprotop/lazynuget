@@ -400,7 +400,7 @@ public class VersionSelectorModal : ModalBase<string?>
                 var preReleaseTag = version.Substring(dashIndex + 1);
                 // Take only the tag part (e.g., "beta1" -> "beta")
                 var tagParts = preReleaseTag.Split('.', '-');
-                var tag = tagParts[0];
+                var tag = tagParts.Length > 0 ? tagParts[0] : preReleaseTag;
                 badges.Add($"[yellow]● {tag}[/]");
             }
         }

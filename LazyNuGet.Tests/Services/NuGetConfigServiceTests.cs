@@ -235,5 +235,68 @@ public class NuGetConfigServiceTests : IDisposable
         sources.Should().Contain(s => s.Name == "Valid");
     }
 
+    [Fact]
+    public void GetEffectiveSources_XmlWithDtd_ThrowsOrSkips()
+    {
+        var dtdConfig = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<!DOCTYPE configuration [
+  <!ENTITY xxe SYSTEM ""file:///etc/passwd"">
+]>
+<configuration>
+  <packageSources>
+    <add key=""evil"" value=""&xxe;"" />
+  </packageSources>
+</configuration>";
+        _temp.WriteFile("nuget.config", dtdConfig);
+
+        // Should not throw — the config with DTD should be skipped
+        var sources = _service.GetEffectiveSources(_temp.Path);
+        sources.Should().NotContain(s => s.Name == "evil");
+    }
+
+    [Fact]
+    public void GetEffectiveSources_InvalidUrlScheme_SkipsSource()
+    {
+        var config = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration>
+  <packageSources>
+    <add key=""Valid"" value=""https://valid.example.com"" />
+    <add key=""FtpSource"" value=""ftp://evil.example.com"" />
+    <add key=""FileScheme"" value=""file:///tmp/packages"" />
+  </packageSources>
+</configuration>";
+        _temp.WriteFile("nuget.config", config);
+
+        var sources = _service.GetEffectiveSources(_temp.Path);
+        sources.Should().Contain(s => s.Name == "Valid");
+        sources.Should().NotContain(s => s.Name == "FtpSource");
+        sources.Should().NotContain(s => s.Name == "FileScheme");
+    }
+
+    [Fact]
+    public void GetEffectiveSources_ValidHttps_Accepted()
+    {
+        _temp.WriteFile("nuget.config", SampleDataBuilder.CreateNuGetConfig(
+            ("SecureSource", "https://secure.example.com/v3/index.json")));
+
+        var sources = _service.GetEffectiveSources(_temp.Path);
+        sources.Should().Contain(s => s.Name == "SecureSource" && s.Url == "https://secure.example.com/v3/index.json");
+    }
+
+    [Theory]
+    [InlineData("https://example.com", true)]
+    [InlineData("http://example.com", true)]
+    [InlineData("/local/path", true)]
+    [InlineData("C:\\local\\path", true)]
+    [InlineData("ftp://evil.com", false)]
+    [InlineData("file:///etc/passwd", false)]
+    [InlineData("javascript:alert(1)", false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    public void IsValidSourceUrl_ValidatesCorrectly(string url, bool expected)
+    {
+        NuGetConfigService.IsValidSourceUrl(url).Should().Be(expected);
+    }
+
     public void Dispose() => _temp.Dispose();
 }

@@ -45,6 +45,9 @@ public class ConfigurationService
             if (!File.Exists(ConfigFile))
                 return new LazyNuGetSettings();
 
+            if (new FileInfo(ConfigFile).Length > 1_048_576)
+                return new LazyNuGetSettings();
+
             var json = File.ReadAllText(ConfigFile);
             return JsonSerializer.Deserialize<LazyNuGetSettings>(json, JsonOptions)
                    ?? new LazyNuGetSettings();

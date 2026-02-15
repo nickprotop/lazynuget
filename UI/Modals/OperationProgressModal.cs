@@ -7,6 +7,7 @@ using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
+using AsyncHelper = LazyNuGet.Services.AsyncHelper;
 using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
 
@@ -165,7 +166,15 @@ public class OperationProgressModal : ModalBase<OperationResult>
 
         // Start async operation
         _startTime = DateTime.Now;
-        _ = Task.Run(async () => await RunOperationAsync());
+        AsyncHelper.FireAndForget(
+            () => RunOperationAsync(),
+            ex =>
+            {
+                _statusLabel?.SetContent(new List<string> {
+                    $"[{ColorScheme.ErrorMarkup} bold]Unexpected error[/]",
+                    $"[{ColorScheme.MutedMarkup}]{Markup.Escape(ex.Message)}[/]"
+                });
+            });
     }
 
     private async Task RunOperationAsync()

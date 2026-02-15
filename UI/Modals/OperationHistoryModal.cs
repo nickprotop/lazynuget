@@ -8,6 +8,7 @@ using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
+using AsyncHelper = LazyNuGet.Services.AsyncHelper;
 using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
 
@@ -293,18 +294,18 @@ public class OperationHistoryModal : ModalBase<bool>
             // Prioritize rollback over retry (only one will be enabled at a time)
             if (_rollbackButton?.IsEnabled == true)
             {
-                _ = HandleRollbackAsync();
+                AsyncHelper.FireAndForget(() => HandleRollbackAsync());
                 e.Handled = true;
             }
             else if (_retryButton?.IsEnabled == true)
             {
-                _ = HandleRetryAsync();
+                AsyncHelper.FireAndForget(() => HandleRetryAsync());
                 e.Handled = true;
             }
         }
         else if (e.KeyInfo.Key == ConsoleKey.C)
         {
-            _ = HandleClearAsync();
+            AsyncHelper.FireAndForget(() => HandleClearAsync());
             e.Handled = true;
         }
         // Filter by type

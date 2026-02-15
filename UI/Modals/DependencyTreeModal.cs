@@ -8,6 +8,7 @@ using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
+using AsyncHelper = LazyNuGet.Services.AsyncHelper;
 using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
 using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
 
@@ -220,41 +221,38 @@ public class DependencyTreeModal : ModalBase<bool>
         Modal.AddControl(buttonGrid);
 
         // Load data asynchronously
-        _ = Task.Run(async () =>
+        AsyncHelper.FireAndForget(async () =>
         {
-            try
+            if (_isPackageMode)
             {
-                if (_isPackageMode)
+                // Mode B: Fetch package's declared dependencies from NuGet
+                var nugetData = await _nugetClientService.GetPackageDetailsAsync(_selectedPackage!.Id);
+                if (nugetData != null)
                 {
-                    // Mode B: Fetch package's declared dependencies from NuGet
-                    var nugetData = await _nugetClientService.GetPackageDetailsAsync(_selectedPackage!.Id);
-                    if (nugetData != null)
-                    {
-                        BuildPackageTree(nugetData);
-                    }
-                    else
-                    {
-                        SetTreeContent(new List<string> {
-                            $"[{ColorScheme.ErrorMarkup}]Could not load package metadata[/]"
-                        });
-                        _statusLabel?.SetContent(new List<string> {
-                            $"[{ColorScheme.ErrorMarkup}]Failed to fetch package details[/]"
-                        });
-                    }
+                    BuildPackageTree(nugetData);
                 }
                 else
                 {
-                    // Mode A: Project dependencies via dotnet CLI
-                    _trees = await _cliService.ListTransitiveDependenciesAsync(_project.FilePath);
-                    RefreshProjectTree();
+                    SetTreeContent(new List<string> {
+                        $"[{ColorScheme.ErrorMarkup}]Could not load package metadata[/]"
+                    });
+                    _statusLabel?.SetContent(new List<string> {
+                        $"[{ColorScheme.ErrorMarkup}]Failed to fetch package details[/]"
+                    });
                 }
             }
-            catch (Exception ex)
+            else
             {
-                _statusLabel?.SetContent(new List<string> {
-                    $"[{ColorScheme.ErrorMarkup}]Error loading dependencies: {Markup.Escape(ex.Message)}[/]"
-                });
+                // Mode A: Project dependencies via dotnet CLI
+                _trees = await _cliService.ListTransitiveDependenciesAsync(_project.FilePath);
+                RefreshProjectTree();
             }
+        },
+        ex =>
+        {
+            _statusLabel?.SetContent(new List<string> {
+                $"[{ColorScheme.ErrorMarkup}]Error loading dependencies: {Markup.Escape(ex.Message)}[/]"
+            });
         });
     }
 

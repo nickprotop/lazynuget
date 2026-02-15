@@ -143,5 +143,46 @@ public class OperationHistoryServiceTests : IDisposable
         history[0].ErrorMessage.Should().Be("Package not found");
     }
 
+    [Fact]
+    public async Task AddEntry_CalledImmediatelyAfterConstruction_DoesNotThrow()
+    {
+        var service = CreateService();
+
+        // Call AddEntry immediately without waiting for initialization
+        var act = () => service.AddEntry(SampleDataBuilder.CreateHistoryEntry(projectName: "Immediate"));
+        act.Should().NotThrow();
+
+        // Allow initialization to complete
+        await Task.Delay(200);
+
+        var history = service.GetHistory();
+        history.Should().Contain(e => e.ProjectName == "Immediate");
+    }
+
+    [Fact]
+    public async Task ConcurrentAddAndRead_DoesNotCorrupt()
+    {
+        var service = CreateService();
+
+        // Allow initialization to complete first
+        await Task.Delay(200);
+
+        // Run concurrent adds and reads
+        var tasks = new List<Task>();
+        for (int i = 0; i < 20; i++)
+        {
+            var index = i;
+            tasks.Add(Task.Run(() => service.AddEntry(SampleDataBuilder.CreateHistoryEntry(projectName: $"Concurrent{index}"))));
+            tasks.Add(Task.Run(() => service.GetHistory()));
+        }
+
+        var act = () => Task.WaitAll(tasks.ToArray());
+        act.Should().NotThrow();
+
+        // Final state should have all entries
+        var history = service.GetHistory(100);
+        history.Count.Should().Be(20);
+    }
+
     public void Dispose() => _temp.Dispose();
 }

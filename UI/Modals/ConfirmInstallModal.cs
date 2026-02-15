@@ -345,6 +345,9 @@ public class ConfirmInstallModal : ModalBase<bool>
 
         framework = framework.ToLowerInvariant().Trim();
 
+        if (framework.Length < 4)
+            return null;
+
         // Handle .NET (Core) format: net6.0, net7.0, net8.0, etc.
         if (framework.StartsWith("net") && !framework.StartsWith("netstandard") && !framework.StartsWith("netframework"))
         {

@@ -521,6 +521,9 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
 
         framework = framework.ToLowerInvariant().Trim();
 
+        if (framework.Length < 4)
+            return null;
+
         if (framework.StartsWith("net") && !framework.StartsWith("netstandard") && !framework.StartsWith("netframework"))
         {
             var versionPart = framework.Substring(3);
