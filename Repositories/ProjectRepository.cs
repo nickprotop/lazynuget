@@ -71,10 +71,17 @@ public class ProjectRepository
                 var patterns = new[] { "*.csproj", "*.fsproj", "*.vbproj" };
                 var projectFiles = new List<string>();
 
+                // Use EnumerationOptions to skip inaccessible directories instead of failing
+                var options = new EnumerationOptions
+                {
+                    IgnoreInaccessible = true,
+                    RecurseSubdirectories = true
+                };
+
                 foreach (var pattern in patterns)
                 {
                     projectFiles.AddRange(
-                        Directory.GetFiles(rootPath, pattern, SearchOption.AllDirectories));
+                        Directory.GetFiles(rootPath, pattern, options));
                 }
 
                 return projectFiles;

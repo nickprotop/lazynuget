@@ -18,6 +18,9 @@ class Program
             ? args[0]
             : Environment.CurrentDirectory;
 
+        // Resolve to absolute path to avoid issues with relative paths
+        folderPath = Path.GetFullPath(folderPath);
+
         // Validate folder exists
         if (!Directory.Exists(folderPath))
         {
