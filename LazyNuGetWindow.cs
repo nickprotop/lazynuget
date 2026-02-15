@@ -644,6 +644,12 @@ public class LazyNuGetWindow : IDisposable
             // Discover projects
             var projectFiles = await _discoveryService.DiscoverProjectsAsync(_currentFolderPath);
 
+            // Snapshot LatestVersion data before clearing (not stored in .csproj)
+            var previousLatestVersions = _projects
+                .ToDictionary(
+                    p => p.FilePath,
+                    p => p.Packages.ToDictionary(pkg => pkg.Id, pkg => pkg.LatestVersion));
+
             // Parse each project
             _projects.Clear();
             foreach (var projectFile in projectFiles)
@@ -651,6 +657,18 @@ public class LazyNuGetWindow : IDisposable
                 var project = await _parserService.ParseProjectAsync(projectFile);
                 if (project != null)
                 {
+                    // Restore LatestVersion from previous data
+                    if (previousLatestVersions.TryGetValue(project.FilePath, out var versions))
+                    {
+                        foreach (var pkg in project.Packages)
+                        {
+                            if (versions.TryGetValue(pkg.Id, out var latestVersion))
+                            {
+                                pkg.LatestVersion = latestVersion;
+                            }
+                        }
+                    }
+
                     _projects.Add(project);
                 }
             }
@@ -745,6 +763,9 @@ public class LazyNuGetWindow : IDisposable
             // STOP PROGRESS ANIMATION
             StopCheckProgressAnimation(cancelled: false);
 
+            // Refresh current view to reflect updated outdated status
+            RefreshCurrentView();
+
             _windowSystem.LogService.LogInfo($"Completed checking {allPackages.Count} packages", "NuGet");
         }
         catch (OperationCanceledException)
@@ -832,6 +853,57 @@ public class LazyNuGetWindow : IDisposable
 
         // Focus the left list by default (indicators update automatically)
         _contextList?.SetFocus(true, FocusReason.Programmatic);
+    }
+
+    private void RefreshCurrentView()
+    {
+        if (_contextList == null) return;
+
+        var selectedIndex = _contextList.SelectedIndex;
+
+        switch (_currentViewState)
+        {
+            case ViewState.Projects:
+                // Rebuild project list items (display text includes outdated counts)
+                _contextList.ClearItems();
+                foreach (var project in _projects)
+                {
+                    var displayText = $"[cyan1]{Markup.Escape(project.Name)}[/]\n" +
+                                    $"[grey70]  📦 {project.Packages.Count} packages · {project.TargetFramework}[/]";
+
+                    if (project.OutdatedCount > 0)
+                    {
+                        displayText += $"\n[yellow]  ⚠ {project.OutdatedCount} outdated[/]";
+                    }
+                    else
+                    {
+                        displayText += $"\n[green]  ✓ All up-to-date[/]";
+                    }
+
+                    _contextList.AddItem(new ListItem(displayText) { Tag = project });
+                }
+
+                // Restore selection
+                if (selectedIndex >= 0 && selectedIndex < _contextList.Items.Count)
+                    _contextList.SelectedIndex = selectedIndex;
+                break;
+
+            case ViewState.Packages:
+                // Rebuild package list items (display text includes version status)
+                var packages = _filterMode
+                    ? _allInstalledPackages?.Where(p => p.Id.Contains(_packageFilter, StringComparison.OrdinalIgnoreCase)).ToList()
+                    : _allInstalledPackages;
+                if (packages != null)
+                {
+                    PopulatePackagesList(packages);
+                    if (selectedIndex >= 0 && selectedIndex < _contextList.Items.Count)
+                        _contextList.SelectedIndex = selectedIndex;
+                }
+                break;
+        }
+
+        // Rebuild the right panel for current selection
+        HandleSelectionChanged();
     }
 
     private void SwitchToPackagesView(ProjectInfo project)

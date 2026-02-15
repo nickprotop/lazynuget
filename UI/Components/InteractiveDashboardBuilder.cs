@@ -117,10 +117,10 @@ public static class InteractiveDashboardBuilder
             .WithBorderColor(Color.Grey50)
             .SingleLine()
             .ShowHeader()
+            .ShowRowSeparators()
             .WithHeaderColors(Color.Grey70, Color.Black)
             .WithBackgroundColor(null)
-            .WithMargin(1, 1, 0, 0)
-            .WithHorizontalAlignment(HorizontalAlignment.Stretch);
+            .WithMargin(1, 1, 0, 0);
 
         // Add package rows
         foreach (var pkg in project.Packages)
