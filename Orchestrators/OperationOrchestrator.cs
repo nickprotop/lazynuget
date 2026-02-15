@@ -201,14 +201,49 @@ public class OperationOrchestrator
         if (!outdated.Any())
             return new OperationResult { Success = false };
 
+        // Show update strategy modal
+        var strategy = await UpdateStrategyModal.ShowAsync(
+            _windowSystem,
+            outdated.Count,
+            project.Name,
+            _parentWindow);
+
+        if (strategy == null)
+            return new OperationResult { Success = false }; // User cancelled
+
+        // Filter packages based on strategy
+        var packagesToUpdate = outdated
+            .Where(p => VersionComparisonService.IsUpdateAllowed(
+                p.Version,
+                p.LatestVersion!,
+                strategy.Value))
+            .ToList();
+
+        // Handle no matches
+        if (!packagesToUpdate.Any())
+        {
+            _windowSystem.NotificationStateService.ShowNotification(
+                "No Updates Available",
+                $"No packages match the selected update strategy ({strategy.Value.GetDisplayName()})",
+                NotificationSeverity.Info,
+                timeout: 3000,
+                parentWindow: _parentWindow);
+            return new OperationResult { Success = false };
+        }
+
+        // Update confirmation message
+        var confirmMessage = packagesToUpdate.Count == outdated.Count
+            ? $"Update {packagesToUpdate.Count} outdated package(s) in {project.Name}?"
+            : $"Update {packagesToUpdate.Count} of {outdated.Count} outdated package(s) in {project.Name}?\n({strategy.Value.GetDisplayName()})";
+
         var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
             "Update All Packages",
-            $"Update {outdated.Count} outdated package(s) in {project.Name}?",
+            confirmMessage,
             parentWindow: _parentWindow);
         if (!confirm) return new OperationResult { Success = false };
 
         // Build package list for batch update
-        var packages = outdated
+        var packages = packagesToUpdate
             .Select(p => (p.Id, p.LatestVersion!))
             .ToList();
 
