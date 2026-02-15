@@ -35,6 +35,7 @@ public class OperationProgressModal : ModalBase<OperationResult>
     private readonly List<string> _logLines = new();
     private readonly object _logLock = new();
     private DateTime _startTime;
+    private OperationResult? _finalResult;
 
     private OperationProgressModal(
         OperationType operationType,
@@ -292,7 +293,7 @@ public class OperationProgressModal : ModalBase<OperationResult>
             // Update button to "Close" and make window closable
             if (_cancelButton != null)
             {
-                _cancelButton.Text = "[grey93]Close[/]";
+                _cancelButton.Text = "[grey93]Close[/] [grey78](Esc)[/]";
                 _cancelButton.IsEnabled = true;
             }
             if (Modal != null)
@@ -300,7 +301,9 @@ public class OperationProgressModal : ModalBase<OperationResult>
                 Modal.IsClosable = true;
             }
 
-            CloseWithResult(result);
+            // Don't auto-close - let user review results and close manually
+            // Store result for when user closes the modal
+            _finalResult = result;
         }
         catch (OperationCanceledException)
         {
@@ -322,7 +325,7 @@ public class OperationProgressModal : ModalBase<OperationResult>
 
             if (_cancelButton != null)
             {
-                _cancelButton.Text = "[grey93]Close[/]";
+                _cancelButton.Text = "[grey93]Close[/] [grey78](Esc)[/]";
                 _cancelButton.IsEnabled = true;
             }
             if (Modal != null)
@@ -337,7 +340,8 @@ public class OperationProgressModal : ModalBase<OperationResult>
             // Record cancellation to history
             RecordToHistory(false, "Cancelled by user", duration);
 
-            CloseWithResult(cancelResult);
+            // Don't auto-close - let user review cancellation and close manually
+            _finalResult = cancelResult;
         }
         catch (Exception ex)
         {
@@ -365,7 +369,7 @@ public class OperationProgressModal : ModalBase<OperationResult>
 
             if (_cancelButton != null)
             {
-                _cancelButton.Text = "[grey93]Close[/]";
+                _cancelButton.Text = "[grey93]Close[/] [grey78](Esc)[/]";
                 _cancelButton.IsEnabled = true;
             }
             if (Modal != null)
@@ -380,24 +384,34 @@ public class OperationProgressModal : ModalBase<OperationResult>
             // Record error to history
             RecordToHistory(false, ex.Message, duration);
 
-            CloseWithResult(errorResult);
+            // Don't auto-close - let user review error and close manually
+            _finalResult = errorResult;
         }
     }
 
     private void OnCancelButtonClick(object? sender, ButtonControl e)
     {
-        if (_statusLabel != null && _cancelButton != null)
+        // If operation is still running, cancel it
+        if (_finalResult == null)
         {
-            _statusLabel.SetContent(new List<string> {
-                $"[{ColorScheme.WarningMarkup} bold]Cancelling...[/]",
-                $"[{ColorScheme.MutedMarkup}]Please wait for the operation to stop[/]"
-            });
-            _cancelButton.IsEnabled = false;
+            if (_statusLabel != null && _cancelButton != null)
+            {
+                _statusLabel.SetContent(new List<string> {
+                    $"[{ColorScheme.WarningMarkup} bold]Cancelling...[/]",
+                    $"[{ColorScheme.MutedMarkup}]Please wait for the operation to stop[/]"
+                });
+                _cancelButton.IsEnabled = false;
+            }
+            if (Modal != null)
+            {
+                Modal.IsClosable = true;
+                Modal.Close();
+            }
         }
-        if (Modal != null)
+        else
         {
-            Modal.IsClosable = true;
-            Modal.Close();
+            // Operation completed, close with stored result
+            CloseWithResult(_finalResult);
         }
     }
 
@@ -423,10 +437,20 @@ public class OperationProgressModal : ModalBase<OperationResult>
 
     protected override void OnKeyPressed(object? sender, KeyPressedEventArgs e)
     {
-        if (e.KeyInfo.Key == ConsoleKey.Escape && _cancelButton?.IsEnabled == true)
+        if (e.KeyInfo.Key == ConsoleKey.Escape)
         {
-            OnCancelButtonClick(sender, _cancelButton);
-            e.Handled = true;
+            // If operation completed, close with result
+            if (_finalResult != null && Modal?.IsClosable == true)
+            {
+                CloseWithResult(_finalResult);
+                e.Handled = true;
+            }
+            // If still running and cancel button is enabled, cancel
+            else if (_cancelButton?.IsEnabled == true)
+            {
+                OnCancelButtonClick(sender, _cancelButton);
+                e.Handled = true;
+            }
         }
         else
         {
