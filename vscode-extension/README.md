@@ -1,8 +1,4 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/nickprotop/lazynuget/main/.github/logo.svg" alt="LazyNuGet Logo" width="600">
-</div>
-
-<div align="center">
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/nickprotop/lazynuget/blob/main/LICENSE)
 [![NuGet](https://img.shields.io/nuget/v/LazyNuGet?logo=nuget&color=004880)](https://www.nuget.org/packages/LazyNuGet)
