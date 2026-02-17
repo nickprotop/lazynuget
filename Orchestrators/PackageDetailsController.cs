@@ -2,7 +2,6 @@ using SharpConsoleUI;
 using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drawing;
-using SharpConsoleUI.Events;
 using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
@@ -31,6 +30,7 @@ public class PackageDetailsController : IDisposable
     private PackageDetailTab _currentDetailTab = PackageDetailTab.Overview;
     private PackageReference? _cachedPackageRef;
     private NuGetPackage? _cachedNuGetData;
+    private TabControl? _tabControl;
     private CancellationTokenSource? _packageLoadCancellation;
     private System.Threading.Timer? _loadingAnimationTimer;
     private int _spinnerFrame;
@@ -70,20 +70,23 @@ public class PackageDetailsController : IDisposable
 
     public bool HandleDetailTabShortcut(ConsoleKey key)
     {
-        var tab = key switch
+        var tabIndex = key switch
         {
-            ConsoleKey.F1 => PackageDetailTab.Overview,
-            ConsoleKey.F2 => PackageDetailTab.Dependencies,
-            ConsoleKey.F3 => PackageDetailTab.Versions,
-            ConsoleKey.F4 => PackageDetailTab.WhatsNew,
-            _ => (PackageDetailTab?)null
+            ConsoleKey.F1 => 0,
+            ConsoleKey.F2 => 1,
+            ConsoleKey.F3 => 2,
+            ConsoleKey.F4 => 3,
+            _ => -1
         };
 
-        if (tab == null) return false;
-        if (tab.Value == _currentDetailTab) return true;
+        if (tabIndex < 0) return false;
 
-        _currentDetailTab = tab.Value;
-        RebuildPackageDetailsForTab();
+        if (_tabControl != null)
+        {
+            _tabControl.ActiveTabIndex = tabIndex;
+            _currentDetailTab = (PackageDetailTab)tabIndex;
+        }
+
         return true;
     }
 
@@ -122,22 +125,14 @@ public class PackageDetailsController : IDisposable
             onRemove: () => OnRemovePackage(_cachedPackageRef),
             onDeps: () => OnShowPackageDeps(_cachedPackageRef));
         _updateDetailsPanel(controls);
-        WireUpTabClickHandlers();
+        CaptureTabControl();
     }
 
-    private void WireUpTabClickHandlers()
+    private void CaptureTabControl()
     {
         if (_detailsPanel == null) return;
 
-        // Find the single tabBar control and wire up click handler
-        var tabBar = FindControlByName<MarkupControl>(_detailsPanel.GetChildren(), "tabBar");
-        if (tabBar != null)
-        {
-            // Remove old handler if any
-            tabBar.MouseClick -= OnTabBarClick;
-            // Add new handler
-            tabBar.MouseClick += OnTabBarClick;
-        }
+        _tabControl = FindControlByName<TabControl>(_detailsPanel.GetChildren(), "packageTabs");
     }
 
     private T? FindControlByName<T>(IReadOnlyList<IWindowControl> controls, string name) where T : class, IWindowControl
@@ -156,30 +151,6 @@ public class PackageDetailsController : IDisposable
             }
         }
         return null;
-    }
-
-    private void OnTabBarClick(object? sender, MouseEventArgs e)
-    {
-        // Calculate which tab was clicked based on X position
-        // Tab layout: "F1 Overview  F2 Deps  F3 Versions  F4 What's New"
-        // Approximate positions (including 1-char left margin from WithMargin(1,1,1,0)):
-        // F1 Overview: 1-13, F2 Deps: 15-22, F3 Versions: 24-36, F4 What's New: 38-52
-
-        var x = e.Position.X;
-        PackageDetailTab? newTab = x switch
-        {
-            >= 1 and < 14 => PackageDetailTab.Overview,
-            >= 14 and < 23 => PackageDetailTab.Dependencies,
-            >= 23 and < 37 => PackageDetailTab.Versions,
-            >= 37 and < 53 => PackageDetailTab.WhatsNew,
-            _ => null
-        };
-
-        if (newTab.HasValue && newTab.Value != _currentDetailTab)
-        {
-            _currentDetailTab = newTab.Value;
-            RebuildPackageDetailsForTab();
-        }
     }
 
     private void ShowLoadingState(PackageReference package)
@@ -315,7 +286,7 @@ public class PackageDetailsController : IDisposable
                 onRemove: () => OnRemovePackage(package),
                 onDeps: () => OnShowPackageDeps(package));
             _updateDetailsPanel(controls);
-            WireUpTabClickHandlers();
+            CaptureTabControl();
         }
         catch (OperationCanceledException)
         {

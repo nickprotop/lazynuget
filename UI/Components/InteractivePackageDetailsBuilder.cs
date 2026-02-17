@@ -70,20 +70,11 @@ public static class InteractivePackageDetailsBuilder
         separator2.Margin = new Margin(1, 0, 1, 0);
         controls.Add(separator2);
 
-        // Tab bar
-        var tabBar = BuildTabBar(activeTab);
-        controls.Add(tabBar);
-
-        // Separator after tab bar
-        var separator3 = Controls.Rule();
-        separator3.Margin = new Margin(1, 0, 1, 0);
-        controls.Add(separator3);
-
-        // Tab content
+        // Tab control with all tab content
         if (nugetData != null)
         {
-            var tabContent = BuildTabContent(activeTab, nugetData, package);
-            controls.Add(tabContent);
+            var tabControl = BuildTabControl(activeTab, nugetData, package);
+            controls.Add(tabControl);
         }
         else
         {
@@ -122,42 +113,27 @@ public static class InteractivePackageDetailsBuilder
         return builder.WithMargin(1, 0, 0, 0).Build();
     }
 
-    private static MarkupControl BuildTabBar(PackageDetailTab activeTab)
+    private static TabControl BuildTabControl(PackageDetailTab activeTab, NuGetPackage nugetData, PackageReference package)
     {
-        var tabs = new (PackageDetailTab tab, string key, string label)[]
+        var initialTab = activeTab switch
         {
-            (PackageDetailTab.Overview, "F1", "Overview"),
-            (PackageDetailTab.Dependencies, "F2", "Deps"),
-            (PackageDetailTab.Versions, "F3", "Versions"),
-            (PackageDetailTab.WhatsNew, "F4", "What's New"),
+            PackageDetailTab.Overview => 0,
+            PackageDetailTab.Dependencies => 1,
+            PackageDetailTab.Versions => 2,
+            PackageDetailTab.WhatsNew => 3,
+            _ => 0,
         };
 
-        var parts = new List<string>();
-        foreach (var (tab, key, label) in tabs)
-        {
-            if (tab == activeTab)
-                parts.Add($"[white on grey35] {key} {label} [/]");
-            else
-                parts.Add($"[grey50]{key} {label}[/]");
-        }
-
-        return Controls.Markup()
-            .AddLine(string.Join("  ", parts))
+        return Controls.TabControl()
+            .AddTab("Overview", BuildOverviewPanel(nugetData, package))
+            .AddTab("Deps", BuildDependenciesPanel(nugetData))
+            .AddTab("Versions", BuildVersionsPanel(nugetData, package))
+            .AddTab("What's New", BuildWhatsNewPanel(nugetData, package))
+            .WithActiveTab(initialTab)
+            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
             .WithMargin(1, 1, 1, 0)
-            .WithName("tabBar")
+            .WithName("packageTabs")
             .Build();
-    }
-
-    private static MarkupControl BuildTabContent(PackageDetailTab activeTab, NuGetPackage nugetData, PackageReference package)
-    {
-        return activeTab switch
-        {
-            PackageDetailTab.Overview => BuildOverviewPanel(nugetData, package),
-            PackageDetailTab.Dependencies => BuildDependenciesPanel(nugetData),
-            PackageDetailTab.Versions => BuildVersionsPanel(nugetData, package),
-            PackageDetailTab.WhatsNew => BuildWhatsNewPanel(nugetData, package),
-            _ => BuildOverviewPanel(nugetData, package),
-        };
     }
 
     private static MarkupControl BuildOverviewPanel(NuGetPackage nugetData, PackageReference package)
@@ -248,7 +224,7 @@ public static class InteractivePackageDetailsBuilder
         }
 
         builder.AddEmptyLine();
-        return builder.WithMargin(1, 0, 0, 0).Build();
+        return builder.Build();
     }
 
     private static MarkupControl BuildDependenciesPanel(NuGetPackage nugetData)
@@ -265,7 +241,7 @@ public static class InteractivePackageDetailsBuilder
         {
             builder.AddLine("[grey50]No dependencies[/]");
             builder.AddEmptyLine();
-            return builder.WithMargin(1, 0, 0, 0).Build();
+            return builder.Build();
         }
 
         var totalDeps = nugetData.Dependencies.Sum(g => g.Packages.Count);
@@ -304,7 +280,7 @@ public static class InteractivePackageDetailsBuilder
         }
 
         builder.AddEmptyLine();
-        return builder.WithMargin(1, 0, 0, 0).Build();
+        return builder.Build();
     }
 
     private static MarkupControl BuildVersionsPanel(NuGetPackage nugetData, PackageReference package)
@@ -315,7 +291,7 @@ public static class InteractivePackageDetailsBuilder
         {
             builder.AddLine("[grey50]No version history available[/]");
             builder.AddEmptyLine();
-            return builder.WithMargin(1, 0, 0, 0).Build();
+            return builder.Build();
         }
 
         const int MaxRecentVersions = 20;
@@ -361,7 +337,7 @@ public static class InteractivePackageDetailsBuilder
         }
 
         builder.AddEmptyLine();
-        return builder.WithMargin(1, 0, 0, 0).Build();
+        return builder.Build();
     }
 
     private static MarkupControl BuildWhatsNewPanel(NuGetPackage nugetData, PackageReference package)
@@ -411,7 +387,7 @@ public static class InteractivePackageDetailsBuilder
         }
 
         builder.AddEmptyLine();
-        return builder.WithMargin(1, 0, 0, 0).Build();
+        return builder.Build();
     }
 
 
