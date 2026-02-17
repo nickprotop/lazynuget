@@ -14,6 +14,7 @@ public class NuGetClientService : IDisposable
 {
     private readonly NuGetRepository _repository;
     private readonly ILogService? _logService;
+    private readonly ConcurrentDictionary<string, DateTime> _failedSources = new();
 
     public NuGetClientService(ILogService? logService = null, List<NuGetSource>? sources = null)
     {
@@ -68,6 +69,7 @@ public class NuGetClientService : IDisposable
                 .GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.OrderByDescending(p =>
                     NuGetVersion.TryParse(p.Version, out var v) ? v : new NuGetVersion(0, 0, 0))
+                    .ThenByDescending(p => p.TotalDownloads)
                     .First())
                 .Take(take)
                 .ToList();
@@ -180,11 +182,18 @@ public class NuGetClientService : IDisposable
 
         foreach (var source in enabledSources)
         {
+            // Skip sources that failed recently (< 60s ago) to avoid repeated timeouts during bulk checks
+            if (_failedSources.TryGetValue(source.Url, out var failedAt) &&
+                (DateTime.UtcNow - failedAt).TotalSeconds < 60)
+                continue;
+
             try
             {
                 var versions = await _repository.GetAllVersionsAsync(source, packageId, cancellationToken);
                 if (versions.Count == 0)
                     continue;
+
+                _failedSources.TryRemove(source.Url, out _);
 
                 var stable = versions
                     .Where(v => !v.Contains('-'))
@@ -194,6 +203,7 @@ public class NuGetClientService : IDisposable
             }
             catch (Exception ex)
             {
+                _failedSources[source.Url] = DateTime.UtcNow;
                 _logService?.LogWarning($"Failed to check version on '{source.Name}' for {packageId}: {ex.Message}", "NuGet");
                 // Non-critical: continue trying other sources
             }
@@ -216,7 +226,10 @@ public class NuGetClientService : IDisposable
             if (string.IsNullOrEmpty(latestVersion))
                 return (false, null);
 
-            var isOutdated = !string.Equals(currentVersion, latestVersion, StringComparison.OrdinalIgnoreCase);
+            if (!NuGetVersion.TryParse(currentVersion, out var current) ||
+                !NuGetVersion.TryParse(latestVersion, out var latest))
+                return (false, null);
+            var isOutdated = latest > current;
             return (isOutdated, latestVersion);
         }
         catch
@@ -269,6 +282,21 @@ public class NuGetClientService : IDisposable
             _logService?.LogWarning($"Could not enrich package with catalog data: {ex.Message}", "NuGet");
             // Non-critical: package will have basic info without additional metadata
         }
+    }
+
+    /// <summary>
+    /// Extract the latest stable version from an already-fetched package's version list,
+    /// avoiding an extra HTTP call when we already have all versions.
+    /// </summary>
+    public static string? GetLatestStableVersion(NuGetPackage package)
+    {
+        if (package.Versions == null || package.Versions.Count == 0)
+            return null;
+
+        // Versions are already sorted descending from GetAllVersionsAsync
+        return package.Versions
+            .FirstOrDefault(v => !v.Contains('-'))
+            ?? package.Versions.FirstOrDefault();
     }
 
     public void Dispose()

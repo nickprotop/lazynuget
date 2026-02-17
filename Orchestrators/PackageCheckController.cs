@@ -55,7 +55,7 @@ public class PackageCheckController : IDisposable
         _nugetService = nugetService;
     }
 
-    public async Task CheckForOutdatedPackagesAsync()
+    public async Task CheckForOutdatedPackagesAsync(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -76,13 +76,15 @@ public class PackageCheckController : IDisposable
             // Check packages in parallel with throttling
             var tasks = allPackages.Select(async package =>
             {
-                await semaphore.WaitAsync();
+                await semaphore.WaitAsync(cancellationToken);
                 try
                 {
                     var (isOutdated, latestVersion) = await _nugetService.CheckIfOutdatedAsync(
                         package.Id,
-                        package.Version);
+                        package.Version,
+                        cancellationToken);
 
+                    // Safe: each package object is a distinct reference from SelectMany
                     package.LatestVersion = latestVersion;
 
                     // UPDATE PROGRESS
@@ -180,16 +182,19 @@ public class PackageCheckController : IDisposable
         _bottomHelpBar?.SetContent(new List<string> { completionMessage });
         _window?.Invalidate(true);
 
-        // Restore help text after delay
+        // Restore help text after delay — capture view state now, not at restore time
         var trackerSnapshot = _checkProgressTracker;
+        var viewStateAtCompletion = _getCurrentViewState();
         _checkProgressTracker = null;
         AsyncHelper.FireAndForget(async () =>
         {
             await Task.Delay(displayDurationMs);
 
-            if (!_isFilterMode() && trackerSnapshot != null && !trackerSnapshot.IsActive)
+            // Only restore if view state hasn't changed since completion
+            if (!_isFilterMode() && trackerSnapshot != null && !trackerSnapshot.IsActive
+                && _getCurrentViewState() == viewStateAtCompletion)
             {
-                _statusBarManager?.UpdateHelpBar(_getCurrentViewState());
+                _statusBarManager?.UpdateHelpBar(viewStateAtCompletion);
                 _window?.Invalidate(true);
             }
         });

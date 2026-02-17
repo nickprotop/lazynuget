@@ -8,7 +8,16 @@ public class PackageReference
     public string Id { get; set; } = string.Empty;
     public string Version { get; set; } = string.Empty;
     public string? LatestVersion { get; set; }
-    public bool IsOutdated => !string.IsNullOrEmpty(LatestVersion) && LatestVersion != Version;
+    public bool IsOutdated
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(LatestVersion)) return false;
+            if (!NuGet.Versioning.NuGetVersion.TryParse(Version, out var current)) return false;
+            if (!NuGet.Versioning.NuGetVersion.TryParse(LatestVersion, out var latest)) return false;
+            return latest > current;
+        }
+    }
     public bool HasVulnerability { get; set; }
     public DateTime? LastUpdated { get; set; }
 

@@ -196,13 +196,7 @@ public class PackageDetailsController : IDisposable
         _loadingAnimationTimer?.Dispose();
 
         var spinnerChars = new[] { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
-        var messages = new[]
-        {
-            "Connecting to NuGet.org...",
-            "Fetching package metadata...",
-            "Loading dependencies...",
-            "Analyzing versions..."
-        };
+        var message = "Fetching package details...";
 
         var msgControl = _loadingMessageControl;
         var progressBar = _loadingProgressBar;
@@ -212,8 +206,6 @@ public class PackageDetailsController : IDisposable
             {
                 _spinnerFrame++;
                 var spinnerChar = spinnerChars[_spinnerFrame % spinnerChars.Length];
-                var messageIndex = (_spinnerFrame / 5) % messages.Length;
-                var message = messages[messageIndex];
 
                 msgControl?.SetContent(new List<string>
                 {
@@ -248,7 +240,7 @@ public class PackageDetailsController : IDisposable
         try
         {
             // Fetch package details from NuGet.org
-            var nugetData = await _nugetService.GetPackageDetailsAsync(package.Id);
+            var nugetData = await _nugetService.GetPackageDetailsAsync(package.Id, cancellationToken);
 
             // Check if this operation was cancelled (user selected a different package)
             if (cancellationToken.IsCancellationRequested)
@@ -257,10 +249,16 @@ public class PackageDetailsController : IDisposable
                 return;
             }
 
-            // Update the package reference with latest version info
-            if (nugetData != null && !string.IsNullOrEmpty(nugetData.Version))
+            // Update the package reference with latest stable version
+            // Use the properly-filtered stable version (same logic as background check)
+            // rather than nugetData.Version which may be a pre-release
+            if (nugetData != null)
             {
-                package.LatestVersion = nugetData.Version;
+                var latestStable = NuGetClientService.GetLatestStableVersion(nugetData);
+                if (!string.IsNullOrEmpty(latestStable))
+                {
+                    package.LatestVersion = latestStable;
+                }
             }
 
             // Cache the fetched data for tab switching

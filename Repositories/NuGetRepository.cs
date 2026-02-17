@@ -78,7 +78,7 @@ public class NuGetRepository : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         ApplyAuth(request, source);
 
-        var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+        using var httpResponse = await SendWithRetryAsync(request, source, cancellationToken);
         httpResponse.EnsureSuccessStatusCode();
         var response = await httpResponse.Content.ReadFromJsonAsync<NuGetSearchResponse>(cancellationToken: cancellationToken);
 
@@ -100,7 +100,7 @@ public class NuGetRepository : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         ApplyAuth(request, source);
 
-        var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+        using var httpResponse = await SendWithRetryAsync(request, source, cancellationToken);
         httpResponse.EnsureSuccessStatusCode();
         var response = await httpResponse.Content.ReadFromJsonAsync<NuGetSearchResponse>(cancellationToken: cancellationToken);
 
@@ -121,7 +121,7 @@ public class NuGetRepository : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Get, flatUrl);
         ApplyAuth(request, source);
 
-        var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+        using var httpResponse = await SendWithRetryAsync(request, source, cancellationToken);
         httpResponse.EnsureSuccessStatusCode();
         var flatResponse = await httpResponse.Content.ReadFromJsonAsync<FlatContainerResponse>(cancellationToken: cancellationToken);
 
@@ -151,12 +151,16 @@ public class NuGetRepository : IDisposable
 
         var registrationUrl = $"{endpoints.RegistrationBaseUrl}/{packageId.ToLowerInvariant()}/index.json";
 
+        // Registration responses can be large — use a longer per-request timeout
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(20));
+
         using var request = new HttpRequestMessage(HttpMethod.Get, registrationUrl);
         ApplyAuth(request, source);
 
-        var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+        using var httpResponse = await SendWithRetryAsync(request, source, timeoutCts.Token);
         httpResponse.EnsureSuccessStatusCode();
-        var registrationResponse = await httpResponse.Content.ReadFromJsonAsync<NuGetRegistrationResponse>(cancellationToken: cancellationToken);
+        var registrationResponse = await httpResponse.Content.ReadFromJsonAsync<NuGetRegistrationResponse>(cancellationToken: timeoutCts.Token);
 
         if (registrationResponse?.Items == null || !registrationResponse.Items.Any())
             return null;
@@ -186,18 +190,12 @@ public class NuGetRepository : IDisposable
             if (page?.Items == null || page.Items.Count == 0)
                 continue;
 
-            // Try to find the exact version match first
+            // Try to find the exact version match
             var match = page.Items.FirstOrDefault(item =>
                 string.Equals(item.CatalogEntry?.Version, version, StringComparison.OrdinalIgnoreCase));
             if (match?.CatalogEntry != null)
             {
                 return match.CatalogEntry;
-            }
-
-            // Fall back to last item in the last page (latest)
-            if (i == registrationResponse.Items.Count - 1)
-            {
-                return page.Items.LastOrDefault()?.CatalogEntry;
             }
         }
 
@@ -256,6 +254,32 @@ public class NuGetRepository : IDisposable
     {
         return url.Contains("api.nuget.org", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("nuget.org/v3", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static readonly HashSet<int> TransientStatusCodes = new() { 429, 500, 502, 503, 504 };
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(
+        HttpRequestMessage request, NuGetSource source, CancellationToken ct)
+    {
+        try
+        {
+            var response = await _httpClient.SendAsync(request, ct);
+            if (!TransientStatusCodes.Contains((int)response.StatusCode))
+                return response;
+
+            response.Dispose();
+        }
+        catch (Exception ex) when (ex is TaskCanceledException or HttpRequestException)
+        {
+            if (ct.IsCancellationRequested) throw;
+            // Transient — fall through to retry
+        }
+
+        // Single retry after 1s delay
+        await Task.Delay(1000, ct);
+        using var retryRequest = new HttpRequestMessage(request.Method, request.RequestUri);
+        ApplyAuth(retryRequest, source);
+        return await _httpClient.SendAsync(retryRequest, ct);
     }
 
     private static void ApplyAuth(HttpRequestMessage request, NuGetSource source)
