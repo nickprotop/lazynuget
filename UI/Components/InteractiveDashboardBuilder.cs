@@ -210,6 +210,7 @@ public static class InteractiveDashboardBuilder
             .AddButton(depsBtn)
             .AddButton(restoreBtn)
             .WithSpacing(2)
+            .WithWrap()
             .WithBackgroundColor(Color.Grey15)
             .WithMargin(1, 0, 1, 0)
             .Build();
