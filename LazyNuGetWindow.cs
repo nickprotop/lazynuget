@@ -151,7 +151,7 @@ public class LazyNuGetWindow : IDisposable
     {
         _window = new WindowBuilder(_windowSystem)
             .WithTitle("LazyNuGet")
-            .WithColors(ColorScheme.WindowBackground, Color.Grey93)
+            .WithColors(Color.Grey93, ColorScheme.WindowBackground)
             .AtPosition(0, 0)
             .WithSize(80, 24)
             .WithAsyncWindowThread(RefreshThreadAsync)
@@ -212,9 +212,9 @@ public class LazyNuGetWindow : IDisposable
             .WithMargin(0, 1, 0, 0)
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill)
-            .WithColors(ColorScheme.SidebarBackground, Color.Grey93)
-            .WithFocusedColors(ColorScheme.SidebarBackground, Color.Grey93)
-            .WithHighlightColors(Color.Grey35, Color.White)
+            .WithColors(Color.Grey93, ColorScheme.SidebarBackground)
+            .WithFocusedColors(Color.Grey93, ColorScheme.SidebarBackground)
+            .WithHighlightColors(Color.White, Color.Grey35)
             .SimpleMode()
             .Build();
 

@@ -350,9 +350,9 @@ public class SettingsModal : ModalBase<bool>
             .SimpleMode()
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill)
-            .WithColors(ColorScheme.StatusBarBackground, Color.Grey93)
-            .WithFocusedColors(ColorScheme.StatusBarBackground, Color.Grey93)
-            .WithHighlightColors(Color.Grey35, Color.White)
+            .WithColors(Color.Grey93, ColorScheme.StatusBarBackground)
+            .WithFocusedColors(Color.Grey93, ColorScheme.StatusBarBackground)
+            .WithHighlightColors(Color.White, Color.Grey35)
             .WithMargin(2, 1, 2, 1)
             .Build();
 

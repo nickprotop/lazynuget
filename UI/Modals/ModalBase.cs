@@ -68,7 +68,7 @@ public abstract class ModalBase<TResult>
             .Resizable(GetResizable())
             .Movable(GetMovable())
             .Minimizable(false)
-            .WithColors(ColorScheme.WindowBackground, Color.Grey93)
+            .WithColors(Color.Grey93, ColorScheme.WindowBackground)
             .WithBorderStyle(GetBorderStyle())
             .WithBorderColor(GetBorderColor());
 

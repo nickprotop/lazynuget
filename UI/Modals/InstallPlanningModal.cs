@@ -185,9 +185,9 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
             .SimpleMode()
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill)
-            .WithColors(ColorScheme.SidebarBackground, Color.Grey93)
-            .WithFocusedColors(ColorScheme.SidebarBackground, Color.Grey93)
-            .WithHighlightColors(Color.Grey35, Color.White)
+            .WithColors(Color.Grey93, ColorScheme.SidebarBackground)
+            .WithFocusedColors(Color.Grey93, ColorScheme.SidebarBackground)
+            .WithHighlightColors(Color.White, Color.Grey35)
             .WithMargin(2, 1, 2, 0)
             .Build();
 
