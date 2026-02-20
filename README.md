@@ -59,7 +59,13 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 | ⚡ **Smart Updates** | Auto-detect outdated packages across all projects |
 | 🔍 **Package Search** | Browse and install from NuGet.org in-app |
 | 🌳 **Dependencies** | Visualize project and package dependency trees |
-| 📜 **History** | Track and retry all NuGet operations |
+| 📜 **History** | Track, retry, and undo NuGet operations |
+| 🔒 **Security** | Per-package vulnerability details with severity and advisory links |
+| 🏗️ **Multi-TF** | Full multi-target framework display (`net8.0 \| net9.0`) |
+| 🔐 **Private Feeds** | Authenticated custom NuGet sources with stored credentials |
+| 🗂️ **Solution Groups** | Projects grouped by `.sln` file in the sidebar |
+| 🔄 **Migrate** | One-click migration from deprecated packages to their recommended replacements |
+| 🧪 **Prerelease** | Prerelease version hints in package details |
 | ⚙️ **Configuration** | Private feeds, custom sources, settings |
 
 ## Keyboard Shortcuts
@@ -69,7 +75,7 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 | `↑/↓` | Navigate lists |
 | `Enter` | View package details / Select project |
 | `Ctrl+O` | Open folder picker |
-| `Ctrl+R` | Reload projects |
+| `Ctrl+R` | Reload projects (clears cache) |
 | `Ctrl+S` | Search NuGet.org |
 | `Ctrl+D` | Dependency tree (project deps or package deps) |
 | `Ctrl+H` | View operation history |
@@ -80,6 +86,11 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 | `Ctrl+L` | Open log viewer |
 | `Ctrl+↑/↓` | Scroll details panel |
 | `Esc` | Go back / Close dialogs |
+| `F1` | Package details — Overview tab |
+| `F2` | Package details — Dependencies tab |
+| `F3` | Package details — Versions tab |
+| `F4` | Package details — What's New tab |
+| `F5` | Package details — Security tab |
 
 ## Installation
 
