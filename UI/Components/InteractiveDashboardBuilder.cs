@@ -29,10 +29,13 @@ public static class InteractiveDashboardBuilder
         var controls = new List<IWindowControl>();
 
         // Project header
+        var frameworkDisplay = project.TargetFrameworks.Any()
+            ? string.Join(" | ", project.TargetFrameworks)
+            : project.TargetFramework;
         var header = Controls.Markup()
             .AddLine($"[cyan1 bold]Project: {Markup.Escape(project.Name)}[/]")
             .AddLine($"[grey70]Path: {Markup.Escape(ShortenPath(project.FilePath))}[/]")
-            .AddLine($"[grey70]Framework: {project.TargetFramework}[/]")
+            .AddLine($"[grey70]Framework: {Markup.Escape(frameworkDisplay)}[/]")
             .AddEmptyLine()
             .WithMargin(1, 1, 0, 0)
             .Build();

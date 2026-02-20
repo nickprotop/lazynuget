@@ -38,7 +38,8 @@ public class ProjectParserService
                 Name = projectData.Name,
                 FilePath = projectData.FilePath,
                 LastModified = projectData.LastModified,
-                TargetFramework = projectData.TargetFramework
+                TargetFramework = projectData.TargetFramework,
+                TargetFrameworks = projectData.TargetFrameworks
             };
 
             // Convert package references to PackageReference models

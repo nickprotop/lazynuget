@@ -26,11 +26,15 @@ public class ProjectRepository
                     LastModified = File.GetLastWriteTime(projectFilePath)
                 };
 
-                // Extract target framework
-                var targetFramework = doc.Descendants("TargetFramework").FirstOrDefault()?.Value
-                                   ?? doc.Descendants("TargetFrameworks").FirstOrDefault()?.Value?.Split(';').FirstOrDefault()
-                                   ?? "unknown";
-                projectData.TargetFramework = targetFramework;
+                // Extract target framework(s)
+                var singleTf = doc.Descendants("TargetFramework").FirstOrDefault()?.Value;
+                var multiTf  = doc.Descendants("TargetFrameworks").FirstOrDefault()?.Value;
+                var frameworks = singleTf != null
+                    ? new List<string> { singleTf }
+                    : (multiTf?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                             .ToList() ?? new List<string>());
+                projectData.TargetFrameworks = frameworks;
+                projectData.TargetFramework  = frameworks.FirstOrDefault() ?? "unknown";
 
                 // Extract package references
                 var packageReferences = doc.Descendants("PackageReference");
@@ -118,6 +122,7 @@ public class ProjectFileData
     public string FilePath { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string TargetFramework { get; set; } = string.Empty;
+    public List<string> TargetFrameworks { get; set; } = new();
     public DateTime LastModified { get; set; }
     public List<PackageReferenceData> PackageReferences { get; set; } = new();
 }
