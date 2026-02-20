@@ -80,6 +80,21 @@ public class SearchCoordinator
             await _nugetService.EnrichPackageWithCatalogDataAsync(source, package);
         }
 
+        // Framework compatibility check
+        if (HasFrameworkIncompatibility(targetProject, package))
+        {
+            var tfDisplay = targetProject.TargetFrameworks.Any()
+                ? string.Join(", ", targetProject.TargetFrameworks)
+                : targetProject.TargetFramework;
+            var proceed = await ConfirmationModal.ShowAsync(_windowSystem,
+                "Framework Compatibility Warning",
+                $"⚠ {package.Id} does not list {tfDisplay} as a supported framework.\n\nInstall anyway?",
+                "Install Anyway",
+                "Cancel",
+                _parentWindow);
+            if (!proceed) return new OperationResult { Success = false };
+        }
+
         // Check if already installed
         var existing = targetProject.Packages.FirstOrDefault(p =>
             string.Equals(p.Id, package.Id, StringComparison.OrdinalIgnoreCase));
@@ -131,6 +146,42 @@ public class SearchCoordinator
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Returns true when the package only lists legacy .NET Framework (net4x) target frameworks
+    /// and the project targets .NET 5+, indicating likely incompatibility.
+    /// </summary>
+    private static bool HasFrameworkIncompatibility(ProjectInfo project, NuGetPackage package)
+    {
+        if (!package.TargetFrameworks.Any()) return false;
+
+        // Check whether all package TFs are legacy net4x (no netstandard, netcoreapp, net5+)
+        bool allLegacy = package.TargetFrameworks.All(tf =>
+        {
+            var lower = tf.ToLowerInvariant().TrimStart('.');
+            return lower.StartsWith("net4") && !lower.StartsWith("net4.") ||
+                   lower.StartsWith("net40") || lower.StartsWith("net45") ||
+                   lower.StartsWith("net46") || lower.StartsWith("net47") ||
+                   lower.StartsWith("net48");
+        });
+
+        if (!allLegacy) return false;
+
+        // Check if the project targets net5+ (modern .NET)
+        var projectTfs = project.TargetFrameworks.Any()
+            ? project.TargetFrameworks
+            : new List<string> { project.TargetFramework };
+
+        return projectTfs.Any(tf =>
+        {
+            var lower = tf.ToLowerInvariant().TrimStart('.');
+            if (!lower.StartsWith("net")) return false;
+            // Extract version number
+            var versionPart = lower.Substring(3).TrimStart('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+            var numStr = lower.Substring(3, lower.Length - 3 - versionPart.Length);
+            return int.TryParse(numStr, out var v) && v >= 5;
+        });
     }
 
     /// <summary>
