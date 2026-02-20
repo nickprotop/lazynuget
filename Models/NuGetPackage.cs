@@ -1,6 +1,15 @@
 namespace LazyNuGet.Models;
 
 /// <summary>
+/// Represents a single known vulnerability for a NuGet package
+/// </summary>
+public class VulnerabilityInfo
+{
+    public string? AdvisoryUrl { get; set; }
+    public string? Severity    { get; set; }  // "Low" | "Moderate" | "High" | "Critical"
+}
+
+/// <summary>
 /// Represents a package from NuGet.org
 /// </summary>
 public class NuGetPackage
@@ -24,6 +33,7 @@ public class NuGetPackage
     public string? DeprecationMessage { get; set; }
     public string? AlternatePackageId { get; set; }
     public int VulnerabilityCount { get; set; }
+    public List<VulnerabilityInfo> Vulnerabilities { get; set; } = new();
     public List<string> TargetFrameworks { get; set; } = new();
     public long? PackageSize { get; set; }
     public string? ReleaseNotes { get; set; }

@@ -26,6 +26,7 @@ public class PackageDetailsController : IDisposable
     private readonly Func<PackageReference, Task> _onChangeVersion;
     private readonly Func<PackageReference, Task> _onRemovePackage;
     private readonly Func<ProjectInfo, PackageReference?, Task> _onShowDependencyTree;
+    private Func<PackageReference, Task>? _onMigratePackage;
 
     private PackageDetailTab _currentDetailTab = PackageDetailTab.Overview;
     private PackageReference? _cachedPackageRef;
@@ -74,6 +75,11 @@ public class PackageDetailsController : IDisposable
         _nugetService = nugetService;
     }
 
+    public void SetMigrateCallback(Func<PackageReference, Task>? onMigratePackage)
+    {
+        _onMigratePackage = onMigratePackage;
+    }
+
     public bool HandleDetailTabShortcut(ConsoleKey key)
     {
         var tabIndex = key switch
@@ -82,6 +88,7 @@ public class PackageDetailsController : IDisposable
             ConsoleKey.F2 => 1,
             ConsoleKey.F3 => 2,
             ConsoleKey.F4 => 3,
+            ConsoleKey.F5 => 4,
             _ => -1
         };
 
@@ -133,7 +140,8 @@ public class PackageDetailsController : IDisposable
             onUpdate: () => OnUpdatePackage(_cachedPackageRef),
             onChangeVersion: () => OnChangeVersion(_cachedPackageRef),
             onRemove: () => OnRemovePackage(_cachedPackageRef),
-            onDeps: () => OnShowPackageDeps(_cachedPackageRef));
+            onDeps: () => OnShowPackageDeps(_cachedPackageRef),
+            onMigrate: _onMigratePackage != null ? () => OnMigratePackage(_cachedPackageRef) : null);
         _updateDetailsPanel(controls);
         CaptureTabControl();
     }
@@ -259,16 +267,21 @@ public class PackageDetailsController : IDisposable
                 return;
             }
 
-            // Update the package reference with latest stable version
-            // Use the properly-filtered stable version (same logic as background check)
-            // rather than nugetData.Version which may be a pre-release
+            // Update the package reference with latest stable version and enrich metadata
             if (nugetData != null)
             {
                 var latestStable = NuGetClientService.GetLatestStableVersion(nugetData);
                 if (!string.IsNullOrEmpty(latestStable))
-                {
                     package.LatestVersion = latestStable;
-                }
+
+                // Populate vulnerability data
+                package.HasVulnerability = nugetData.Vulnerabilities.Count > 0;
+                package.Vulnerabilities  = nugetData.Vulnerabilities;
+
+                // Populate prerelease hint: Versions list is newest-first; index 0 is absolute latest
+                var absoluteLatest = nugetData.Versions.FirstOrDefault();
+                if (!string.IsNullOrEmpty(absoluteLatest) && absoluteLatest.Contains('-'))
+                    package.LatestPrereleaseVersion = absoluteLatest;
             }
 
             // Cache the fetched data for tab switching
@@ -292,7 +305,8 @@ public class PackageDetailsController : IDisposable
                 onUpdate: () => OnUpdatePackage(package),
                 onChangeVersion: () => OnChangeVersion(package),
                 onRemove: () => OnRemovePackage(package),
-                onDeps: () => OnShowPackageDeps(package));
+                onDeps: () => OnShowPackageDeps(package),
+                onMigrate: _onMigratePackage != null ? () => OnMigratePackage(package) : null);
             _updateDetailsPanel(controls);
             CaptureTabControl();
         }
@@ -345,6 +359,14 @@ public class PackageDetailsController : IDisposable
         AsyncHelper.FireAndForget(
             () => _onRemovePackage(package),
             ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Remove Error", "Failed to remove package.", "NuGet", _window));
+    }
+
+    private void OnMigratePackage(PackageReference package)
+    {
+        if (_onMigratePackage == null) return;
+        AsyncHelper.FireAndForget(
+            () => _onMigratePackage(package),
+            ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Migrate Error", "Failed to migrate package.", "NuGet", _window));
     }
 
     public void Dispose()

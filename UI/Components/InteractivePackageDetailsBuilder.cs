@@ -21,7 +21,8 @@ public static class InteractivePackageDetailsBuilder
         Action onUpdate,
         Action onChangeVersion,
         Action onRemove,
-        Action? onDeps = null)
+        Action? onDeps = null,
+        Action? onMigrate = null)
     {
         var controls = new List<IWindowControl>();
 
@@ -53,7 +54,7 @@ public static class InteractivePackageDetailsBuilder
         controls.Add(toolbarTop);
 
         // Action toolbar - placed after status, before details
-        var toolbar = BuildActionToolbar(package, nugetData, onUpdate, onChangeVersion, onRemove, onDeps);
+        var toolbar = BuildActionToolbar(package, nugetData, onUpdate, onChangeVersion, onRemove, onDeps, onMigrate);
         controls.Add(toolbar);
 
         // Empty markup below toolbar for background extension
@@ -73,7 +74,7 @@ public static class InteractivePackageDetailsBuilder
         // Tab control with all tab content
         if (nugetData != null)
         {
-            var tabControl = BuildTabControl(activeTab, nugetData, package);
+            var tabControl = BuildTabControl(activeTab, nugetData, package, onMigrate);
             controls.Add(tabControl);
         }
         else
@@ -113,7 +114,7 @@ public static class InteractivePackageDetailsBuilder
         return builder.WithMargin(1, 0, 0, 0).Build();
     }
 
-    private static TabControl BuildTabControl(PackageDetailTab activeTab, NuGetPackage nugetData, PackageReference package)
+    private static TabControl BuildTabControl(PackageDetailTab activeTab, NuGetPackage nugetData, PackageReference package, Action? onMigrate = null)
     {
         var initialTab = activeTab switch
         {
@@ -121,14 +122,16 @@ public static class InteractivePackageDetailsBuilder
             PackageDetailTab.Dependencies => 1,
             PackageDetailTab.Versions => 2,
             PackageDetailTab.WhatsNew => 3,
+            PackageDetailTab.Security => 4,
             _ => 0,
         };
 
         return Controls.TabControl()
-            .AddTab("Overview", BuildOverviewPanel(nugetData, package))
+            .AddTab("Overview", BuildOverviewPanel(nugetData, package, onMigrate))
             .AddTab("Deps", BuildDependenciesPanel(nugetData))
             .AddTab("Versions", BuildVersionsPanel(nugetData, package))
             .AddTab("What's New", BuildWhatsNewPanel(nugetData, package))
+            .AddTab("Security", BuildSecurityPanel(nugetData))
             .WithActiveTab(initialTab)
             .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
             .WithHeaderStyle(TabHeaderStyle.Separator)
@@ -137,7 +140,7 @@ public static class InteractivePackageDetailsBuilder
             .Build();
     }
 
-    private static MarkupControl BuildOverviewPanel(NuGetPackage nugetData, PackageReference package)
+    private static MarkupControl BuildOverviewPanel(NuGetPackage nugetData, PackageReference package, Action? onMigrate = null)
     {
         var builder = Controls.Markup();
 
@@ -146,7 +149,7 @@ public static class InteractivePackageDetailsBuilder
         if (nugetData.IsVerified)
             badges.Add("[green]✓ Verified[/]");
         if (nugetData.VulnerabilityCount > 0)
-            badges.Add($"[red]⚠ {nugetData.VulnerabilityCount} Vulnerabilities[/]");
+            badges.Add($"[red]⚠ {nugetData.VulnerabilityCount} Vulnerabilities — see F5:Security[/]");
         if (badges.Any())
         {
             builder.AddLine(string.Join(" ", badges));
@@ -161,6 +164,13 @@ public static class InteractivePackageDetailsBuilder
                 builder.AddLine($"[yellow]{Markup.Escape(nugetData.DeprecationMessage)}[/]");
             if (!string.IsNullOrEmpty(nugetData.AlternatePackageId))
                 builder.AddLine($"[grey70]Alternative: {Markup.Escape(nugetData.AlternatePackageId)}[/]");
+            builder.AddEmptyLine();
+        }
+
+        // Prerelease hint
+        if (package.HasNewerPrerelease && !string.IsNullOrEmpty(package.LatestPrereleaseVersion))
+        {
+            builder.AddLine($"[grey50]Prerelease available: {Markup.Escape(package.LatestPrereleaseVersion)}[/]");
             builder.AddEmptyLine();
         }
 
@@ -392,6 +402,40 @@ public static class InteractivePackageDetailsBuilder
     }
 
 
+    private static MarkupControl BuildSecurityPanel(NuGetPackage nugetData)
+    {
+        var builder = Controls.Markup();
+
+        if (!nugetData.Vulnerabilities.Any())
+        {
+            builder.AddLine("[green bold]✓ No known vulnerabilities[/]");
+            builder.AddEmptyLine();
+            return builder.Build();
+        }
+
+        builder.AddLine($"[red bold]⚠ {nugetData.Vulnerabilities.Count} Known Vulnerabilit{(nugetData.Vulnerabilities.Count == 1 ? "y" : "ies")}[/]");
+        builder.AddEmptyLine();
+
+        foreach (var vuln in nugetData.Vulnerabilities)
+        {
+            var severityColor = vuln.Severity?.ToLowerInvariant() switch
+            {
+                "critical" => "red",
+                "high"     => "orange1",
+                "moderate" => "yellow",
+                "low"      => "grey70",
+                _          => "grey70"
+            };
+            var severity = string.IsNullOrEmpty(vuln.Severity) ? "Unknown" : vuln.Severity;
+            builder.AddLine($"[{severityColor}]● {Markup.Escape(severity)}[/]");
+            if (!string.IsNullOrEmpty(vuln.AdvisoryUrl))
+                builder.AddLine($"[grey70]  {Markup.Escape(vuln.AdvisoryUrl)}[/]");
+            builder.AddEmptyLine();
+        }
+
+        return builder.Build();
+    }
+
     internal static bool DetectPotentialBreakingChange(string installedVersion, string latestVersion)
     {
         var installedMajor = GetMajorVersion(installedVersion);
@@ -425,7 +469,8 @@ public static class InteractivePackageDetailsBuilder
         Action onUpdate,
         Action onChangeVersion,
         Action onRemove,
-        Action? onDeps)
+        Action? onDeps,
+        Action? onMigrate = null)
     {
         bool hasVersions = nugetData?.Versions.Any() == true;
 
@@ -477,11 +522,26 @@ public static class InteractivePackageDetailsBuilder
             .WithDisabledForegroundColor(Color.Grey50)
             .Build();
 
-        return Controls.Toolbar()
+        var toolbar = Controls.Toolbar()
             .AddButton(updateBtn)
             .AddButton(versionBtn)
             .AddButton(depsBtn)
-            .AddButton(removeBtn)
+            .AddButton(removeBtn);
+
+        // Migrate button (only for deprecated packages with an alternate)
+        if (onMigrate != null && nugetData?.IsDeprecated == true && !string.IsNullOrEmpty(nugetData.AlternatePackageId))
+        {
+            var migrateBtn = Controls.Button($"[yellow]Migrate → {Markup.Escape(nugetData.AlternatePackageId)}[/]")
+                .OnClick((s, e) => onMigrate())
+                .WithBackgroundColor(Color.Grey30)
+                .WithForegroundColor(Color.Grey93)
+                .WithFocusedBackgroundColor(Color.DarkOrange)
+                .WithFocusedForegroundColor(Color.White)
+                .Build();
+            toolbar.AddButton(migrateBtn);
+        }
+
+        return toolbar
             .WithSpacing(2)
             .WithWrap()
             .WithBackgroundColor(Color.Grey15)

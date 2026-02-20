@@ -98,6 +98,11 @@ public class NuGetClientService : IDisposable
             Versions = d.Versions?.Select(v => v.Version ?? string.Empty).ToList() ?? new List<string>(),
             IsVerified = d.Verified,
             VulnerabilityCount = d.Vulnerabilities?.Count ?? 0,
+            Vulnerabilities = d.Vulnerabilities?.Select(v => new VulnerabilityInfo
+            {
+                AdvisoryUrl = v.AdvisoryUrl,
+                Severity    = v.Severity
+            }).ToList() ?? new(),
             IsDeprecated = d.Deprecation != null,
             DeprecationMessage = d.Deprecation?.Message,
             AlternatePackageId = d.Deprecation?.AlternatePackage?.Id
@@ -153,6 +158,11 @@ public class NuGetClientService : IDisposable
                     Versions = allVersions,
                     IsVerified = data.Verified,
                     VulnerabilityCount = data.Vulnerabilities?.Count ?? 0,
+                    Vulnerabilities = data.Vulnerabilities?.Select(v => new VulnerabilityInfo
+                    {
+                        AdvisoryUrl = v.AdvisoryUrl,
+                        Severity    = v.Severity
+                    }).ToList() ?? new(),
                     IsDeprecated = data.Deprecation != null,
                     DeprecationMessage = data.Deprecation?.Message,
                     AlternatePackageId = data.Deprecation?.AlternatePackage?.Id
