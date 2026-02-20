@@ -18,6 +18,8 @@ public class AddSourceModal : ModalBase<CustomNuGetSource?>
 {
     private PromptControl? _nameInput;
     private PromptControl? _urlInput;
+    private PromptControl? _usernameInput;
+    private PromptControl? _passwordInput;
 
     private AddSourceModal()
     {
@@ -33,7 +35,7 @@ public class AddSourceModal : ModalBase<CustomNuGetSource?>
 
     protected override string GetTitle() => "Add NuGet Source";
 
-    protected override (int width, int height) GetSize() => (70, 16);
+    protected override (int width, int height) GetSize() => (70, 22);
 
     protected override bool GetResizable() => false;
 
@@ -71,6 +73,30 @@ public class AddSourceModal : ModalBase<CustomNuGetSource?>
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithMargin(2, 0, 2, 1)
             .Build();
+
+        // Optional credentials section
+        var authLabel = Controls.Markup()
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]Username (optional):[/]")
+            .WithMargin(2, 0, 2, 0)
+            .Build();
+
+        _usernameInput = Controls.Prompt("Username: ")
+            .WithInput("")
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithMargin(2, 0, 2, 1)
+            .Build();
+
+        var passwordLabel = Controls.Markup()
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]Password (optional):[/]")
+            .WithMargin(2, 0, 2, 0)
+            .Build();
+
+        _passwordInput = Controls.Prompt("Password: ")
+            .WithInput("")
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithMargin(2, 0, 2, 1)
+            .Build();
+        _passwordInput.MaskCharacter = '*';
 
         // Separator
         var separator = Controls.RuleBuilder()
@@ -114,6 +140,10 @@ public class AddSourceModal : ModalBase<CustomNuGetSource?>
         Modal.AddControl(_nameInput);
         Modal.AddControl(urlLabel);
         Modal.AddControl(_urlInput);
+        Modal.AddControl(authLabel);
+        Modal.AddControl(_usernameInput);
+        Modal.AddControl(passwordLabel);
+        Modal.AddControl(_passwordInput);
         Modal.AddControl(separator);
         Modal.AddControl(buttonGrid);
     }
@@ -139,11 +169,18 @@ public class AddSourceModal : ModalBase<CustomNuGetSource?>
             return;
         }
 
+        var username = _usernameInput?.Input?.Trim() ?? "";
+        var password = _passwordInput?.Input ?? "";
+        var hasCredentials = !string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(password);
+
         CloseWithResult(new CustomNuGetSource
         {
             Name = name,
             Url = url,
-            IsEnabled = true
+            IsEnabled = true,
+            RequiresAuth = hasCredentials,
+            Username = hasCredentials ? username : null,
+            ClearTextPassword = hasCredentials ? password : null
         });
     }
 }

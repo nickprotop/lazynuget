@@ -119,6 +119,9 @@ public class LazyNuGetWindow : IDisposable
                     Name = custom.Name,
                     Url = custom.Url,
                     IsEnabled = isEnabled,
+                    RequiresAuth = custom.RequiresAuth,
+                    Username = custom.Username,
+                    ClearTextPassword = custom.ClearTextPassword,
                     Origin = NuGetSourceOrigin.LazyNuGetSettings
                 });
             }
@@ -340,6 +343,9 @@ public class LazyNuGetWindow : IDisposable
             pkg => HandleChangeVersionAsync(pkg),
             pkg => HandleRemovePackageAsync(pkg),
             (proj, pkg) => ShowDependencyTreeAsync(proj, pkg));
+
+        // Wire migrate callback into package details controller
+        _packageDetailsController.SetMigrateCallback(pkg => HandleMigratePackageAsync(pkg));
 
         _filterController = new PackageFilterController(
             _contextList,
@@ -792,6 +798,20 @@ public class LazyNuGetWindow : IDisposable
                 }
             }
 
+            // Discover solutions and assign SolutionName to matching projects
+            var solutionService = new SolutionDiscoveryService();
+            var solutions = await solutionService.DiscoverSolutionsAsync(_currentFolderPath);
+            foreach (var solution in solutions)
+            {
+                foreach (var projectPath in solution.ProjectPaths)
+                {
+                    var match = _projects.FirstOrDefault(p =>
+                        string.Equals(p.FilePath, projectPath, StringComparison.OrdinalIgnoreCase));
+                    if (match != null)
+                        match.SolutionName = solution.Name;
+                }
+            }
+
             // Update StatusBarManager with new projects list
             _statusBarManager?.SetProjects(_projects);
 
@@ -951,6 +971,19 @@ public class LazyNuGetWindow : IDisposable
         var result = await (_operationOrchestrator?.HandleRemovePackageAsync(package, selectedProject) ?? Task.FromResult(new OperationResult { Success = false }));
 
         // Refresh project after successful removal
+        if (result.Success)
+        {
+            await ReloadProjectAndRefreshView(selectedProject);
+        }
+    }
+
+    private async Task HandleMigratePackageAsync(PackageReference package)
+    {
+        var selectedProject = _navigationController?.SelectedProject;
+        if (selectedProject == null) return;
+
+        var result = await (_operationOrchestrator?.HandleMigratePackageAsync(package, selectedProject) ?? Task.FromResult(new OperationResult { Success = false }));
+
         if (result.Success)
         {
             await ReloadProjectAndRefreshView(selectedProject);
@@ -1228,5 +1261,6 @@ public enum PackageDetailTab
     Overview,
     Dependencies,
     Versions,
-    WhatsNew
+    WhatsNew,
+    Security
 }
