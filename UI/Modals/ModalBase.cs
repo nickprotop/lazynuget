@@ -63,7 +63,6 @@ public abstract class ModalBase<TResult>
     protected virtual Window CreateModal()
     {
         var builder = new WindowBuilder(WindowSystem)
-            .Centered()
             .AsModal()
             .Resizable(GetResizable())
             .Movable(GetMovable())
@@ -79,9 +78,10 @@ public abstract class ModalBase<TResult>
             builder.WithTitle(title);
         }
 
-        // Apply size
+        // Apply size then center (Centered must come after WithSize)
         var (width, height) = GetSize();
         builder.WithSize(width, height);
+        builder.Centered();
 
         return builder.Build();
     }

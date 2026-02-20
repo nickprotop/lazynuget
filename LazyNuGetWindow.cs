@@ -664,7 +664,29 @@ public class LazyNuGetWindow : IDisposable
     {
         try
         {
-            var selected = await FileDialogs.ShowFolderPickerAsync(_windowSystem, _currentFolderPath, _window);
+            string? selected = null;
+
+            // Show recent folders modal if there are any
+            var recentFolders = _configService?.Load().RecentFolders ?? new List<string>();
+            if (recentFolders.Count > 0)
+            {
+                var result = await RecentFoldersModal.ShowAsync(
+                    _windowSystem, recentFolders, _currentFolderPath, _window);
+
+                if (result == null)
+                    return; // User cancelled
+
+                if (result == RecentFoldersModal.BrowseSentinel)
+                    selected = await FileDialogs.ShowFolderPickerAsync(_windowSystem, _currentFolderPath, _window);
+                else
+                    selected = result;
+            }
+            else
+            {
+                // No recent folders — go straight to folder picker
+                selected = await FileDialogs.ShowFolderPickerAsync(_windowSystem, _currentFolderPath, _window);
+            }
+
             if (!string.IsNullOrEmpty(selected))
             {
                 _currentFolderPath = selected;
