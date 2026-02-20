@@ -208,21 +208,54 @@ public static class InteractiveDashboardBuilder
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill);
 
+        // Precompute max name length for alignment across all packages
+        int maxNameLength = project.Packages.Max(p => p.Id.Length);
+
         foreach (var pkg in project.Packages)
         {
+            builder.AddItem(new ListItem(Markup.Escape(pkg.Id)) { Tag = pkg });
+        }
+
+        var list = builder.Build();
+
+        // Use ItemFormatter to dynamically format items based on actual rendered width.
+        // The formatter is called during paint after ActualWidth is set, so it adapts to resizes.
+        // Available text width: ActualWidth - margins(1+1) - checkboxIndicator(5) - padding(2)
+        const int listOverhead = 9; // margins + checkbox indicator + internal padding
+        const int statusPrefixWidth = 2; // "⚠ " or "✓ " visible chars
+        const int columnGap = 1; // space between name and version
+
+        list.ItemFormatter = (item, isSelected, hasFocus) =>
+        {
+            if (item.Tag is not PackageReference pkg)
+                return item.Text;
+
             string statusPrefix = pkg.IsOutdated ? "[yellow]⚠[/] " : "[green]✓[/] ";
-            string name = Markup.Escape(pkg.Id);
-            string versionInfo = pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion)
+
+            string versionText = pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion)
+                ? $"{pkg.Version} → {pkg.LatestVersion}"
+                : pkg.Version;
+            int versionVisibleWidth = versionText.Length;
+            string versionMarkup = pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion)
                 ? $"[grey70]{Markup.Escape(pkg.Version)}[/] [yellow]→ {Markup.Escape(pkg.LatestVersion)}[/]"
                 : $"[grey70]{Markup.Escape(pkg.Version)}[/]";
 
-            // Pad package name to create pseudo-columns
-            string text = $"{statusPrefix}{name,-30} {versionInfo}";
+            int availableWidth = list.ActualWidth - listOverhead;
+            // Name column gets whatever space remains after status prefix, version, and gap
+            int nameColumnWidth = availableWidth - statusPrefixWidth - versionVisibleWidth - columnGap;
 
-            builder.AddItem(new ListItem(text) { Tag = pkg });
-        }
+            // Cap at the longest package name — don't let the name column consume extra space
+            nameColumnWidth = Math.Clamp(nameColumnWidth, 1, maxNameLength);
 
-        return builder.Build();
+            string name = Markup.Escape(pkg.Id);
+            string paddedName = pkg.Id.Length <= nameColumnWidth
+                ? name.PadRight(nameColumnWidth)
+                : Markup.Escape(pkg.Id[..(nameColumnWidth - 1)]) + "…";
+
+            return $"{statusPrefix}{paddedName} {versionMarkup}";
+        };
+
+        return list;
     }
 
     private static IWindowControl BuildActionToolbar(
