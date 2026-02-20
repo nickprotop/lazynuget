@@ -18,4 +18,5 @@ public class OperationHistoryEntry
     public string ProjectPath { get; init; } = "";
     public string? PackageId { get; init; }
     public string? PackageVersion { get; init; }
+    public string? PreviousVersion { get; init; }
 }

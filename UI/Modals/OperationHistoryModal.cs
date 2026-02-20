@@ -190,10 +190,7 @@ public class OperationHistoryModal : ModalBase<bool>
         {
             var selectedEntry = _historyList?.SelectedItem?.Tag as OperationHistoryEntry;
             _retryButton!.IsEnabled = selectedEntry != null && !selectedEntry.Success;
-            _rollbackButton!.IsEnabled = selectedEntry != null &&
-                                         selectedEntry.Success &&
-                                         (selectedEntry.Type == OperationType.Add || selectedEntry.Type == OperationType.Remove) &&
-                                         !string.IsNullOrEmpty(selectedEntry.PackageId);
+            _rollbackButton!.IsEnabled = IsRollbackable(selectedEntry);
         };
         _historyList.SelectedIndexChanged += _historyListHandler;
 
@@ -465,7 +462,9 @@ public class OperationHistoryModal : ModalBase<bool>
                 (entry.Description.Contains("packages in") || entry.Description.Contains("packages"));
 
             var batchIndicator = isBatchOperation ? "📦 " : "";
-            var text = $"[{statusColor}]{statusIcon}[/] {icon} {batchIndicator}[{ColorScheme.PrimaryMarkup}]{Markup.Escape(entry.Description)}[/] [{ColorScheme.MutedMarkup}]({durationText}) - {timeAgo}[/]";
+            var undoHint = (entry.Type == OperationType.Update && !string.IsNullOrEmpty(entry.PreviousVersion) && entry.Success)
+                ? $" [{ColorScheme.MutedMarkup}](undo available)[/]" : "";
+            var text = $"[{statusColor}]{statusIcon}[/] {icon} {batchIndicator}[{ColorScheme.PrimaryMarkup}]{Markup.Escape(entry.Description)}[/] [{ColorScheme.MutedMarkup}]({durationText}) - {timeAgo}[/]{undoHint}";
 
             if (!entry.Success && !string.IsNullOrEmpty(entry.ErrorMessage))
             {
@@ -480,10 +479,7 @@ public class OperationHistoryModal : ModalBase<bool>
         // Enable/disable retry and rollback buttons based on selection
         var selectedEntry = _historyList?.SelectedItem?.Tag as OperationHistoryEntry;
         _retryButton!.IsEnabled = selectedEntry != null && !selectedEntry.Success;
-        _rollbackButton!.IsEnabled = selectedEntry != null &&
-                                     selectedEntry.Success &&
-                                     (selectedEntry.Type == OperationType.Add || selectedEntry.Type == OperationType.Remove) &&
-                                     !string.IsNullOrEmpty(selectedEntry.PackageId);
+        _rollbackButton!.IsEnabled = IsRollbackable(selectedEntry);
     }
 
     private async Task HandleRetryAsync()
@@ -508,7 +504,43 @@ public class OperationHistoryModal : ModalBase<bool>
     {
         var selectedEntry = _historyList?.SelectedItem?.Tag as OperationHistoryEntry;
         if (selectedEntry == null || !selectedEntry.Success) return;
-        if (selectedEntry.Type != OperationType.Add && selectedEntry.Type != OperationType.Remove) return;
+        if (!IsRollbackable(selectedEntry)) return;
+
+        // Handle Update undo separately
+        if (selectedEntry.Type == OperationType.Update && !string.IsNullOrEmpty(selectedEntry.PreviousVersion))
+        {
+            var confirm = await ConfirmationModal.ShowAsync(
+                _windowSystem,
+                "Undo Update",
+                $"Revert {selectedEntry.PackageId} back to version {selectedEntry.PreviousVersion}?",
+                "Undo",
+                "Cancel",
+                Modal);
+
+            if (!confirm) return;
+
+            CloseWithResult(false);
+            await Task.Delay(100);
+
+            await OperationProgressModal.ShowAsync(
+                _windowSystem,
+                OperationType.Update,
+                (ct, progress) => _cliService.AddPackageAsync(
+                    selectedEntry.ProjectPath, selectedEntry.PackageId!, selectedEntry.PreviousVersion, ct, progress),
+                "Undo Update",
+                $"Reverting {selectedEntry.PackageId} to {selectedEntry.PreviousVersion}",
+                _historyService,
+                selectedEntry.ProjectPath,
+                selectedEntry.ProjectName,
+                selectedEntry.PackageId,
+                selectedEntry.PreviousVersion,
+                _parentWindow);
+
+            await ShowAsync(_windowSystem, _historyService, _cliService, _parentWindow);
+            return;
+        }
+
+        // Add / Remove rollback
         if (string.IsNullOrEmpty(selectedEntry.PackageId)) return;
 
         // Determine the reverse operation
@@ -516,7 +548,7 @@ public class OperationHistoryModal : ModalBase<bool>
         var operationName = rollbackType == OperationType.Remove ? "Uninstall" : "Install";
 
         // Confirm rollback
-        var confirm = await ConfirmationModal.ShowAsync(
+        var confirmRollback = await ConfirmationModal.ShowAsync(
             _windowSystem,
             "Rollback Operation",
             $"{operationName} {selectedEntry.PackageId} to reverse {selectedEntry.Type} operation?",
@@ -524,7 +556,7 @@ public class OperationHistoryModal : ModalBase<bool>
             "Cancel",
             Modal);
 
-        if (!confirm) return;
+        if (!confirmRollback) return;
 
         // Close history modal
         CloseWithResult(false);
@@ -537,6 +569,22 @@ public class OperationHistoryModal : ModalBase<bool>
 
         // Reopen history modal
         await ShowAsync(_windowSystem, _historyService, _cliService, _parentWindow);
+    }
+
+    private static bool IsRollbackable(OperationHistoryEntry? entry)
+    {
+        if (entry == null || !entry.Success) return false;
+
+        // Update undo: needs PreviousVersion
+        if (entry.Type == OperationType.Update && !string.IsNullOrEmpty(entry.PreviousVersion))
+            return true;
+
+        // Add/Remove rollback: needs PackageId
+        if ((entry.Type == OperationType.Add || entry.Type == OperationType.Remove) &&
+            !string.IsNullOrEmpty(entry.PackageId))
+            return true;
+
+        return false;
     }
 
     private async Task HandleClearAsync()

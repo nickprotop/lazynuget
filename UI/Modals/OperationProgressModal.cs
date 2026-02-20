@@ -27,6 +27,7 @@ public class OperationProgressModal : ModalBase<OperationResult>
     private readonly string? _projectName;
     private readonly string? _packageId;
     private readonly string? _packageVersion;
+    private readonly string? _previousVersion;
 
     private MarkupControl? _statusLabel;
     private ProgressBarControl? _progressBar;
@@ -46,7 +47,8 @@ public class OperationProgressModal : ModalBase<OperationResult>
         string? projectPath,
         string? projectName,
         string? packageId,
-        string? packageVersion)
+        string? packageVersion,
+        string? previousVersion)
     {
         _operationType = operationType;
         _operation = operation;
@@ -57,6 +59,7 @@ public class OperationProgressModal : ModalBase<OperationResult>
         _projectName = projectName;
         _packageId = packageId;
         _packageVersion = packageVersion;
+        _previousVersion = previousVersion;
     }
 
     public static Task<OperationResult> ShowAsync(
@@ -70,7 +73,8 @@ public class OperationProgressModal : ModalBase<OperationResult>
         string? projectName = null,
         string? packageId = null,
         string? packageVersion = null,
-        Window? parentWindow = null)
+        Window? parentWindow = null,
+        string? previousVersion = null)
     {
         var instance = new OperationProgressModal(
             operationType,
@@ -81,7 +85,8 @@ public class OperationProgressModal : ModalBase<OperationResult>
             projectPath,
             projectName,
             packageId,
-            packageVersion);
+            packageVersion,
+            previousVersion);
         return ((ModalBase<OperationResult>)instance).ShowAsync(windowSystem, parentWindow);
     }
 
@@ -429,7 +434,8 @@ public class OperationProgressModal : ModalBase<OperationResult>
                 Duration = duration,
                 ProjectPath = _projectPath ?? "",
                 PackageId = _packageId,
-                PackageVersion = _packageVersion
+                PackageVersion = _packageVersion,
+                PreviousVersion = _previousVersion
             };
             _historyService.AddEntry(historyEntry);
         }

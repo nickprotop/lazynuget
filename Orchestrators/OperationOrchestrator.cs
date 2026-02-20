@@ -64,7 +64,8 @@ public class OperationOrchestrator
             project.Name,
             package.Id,
             package.LatestVersion,
-            _parentWindow);
+            _parentWindow,
+            previousVersion: package.Version);
 
         if (result.Success) InvalidateCacheFor(package.Id);
         return result;
@@ -399,6 +400,81 @@ public class OperationOrchestrator
         }
 
         return last;
+    }
+
+    /// <summary>
+    /// Handle migrating a deprecated package to its recommended alternate
+    /// </summary>
+    public async Task<OperationResult> HandleMigratePackageAsync(
+        PackageReference package,
+        ProjectInfo project)
+    {
+        try
+        {
+            var nugetData = await _nugetService.GetPackageDetailsAsync(package.Id);
+            var alternateId = nugetData?.AlternatePackageId ?? string.Empty;
+
+            if (string.IsNullOrEmpty(alternateId))
+            {
+                _windowSystem.NotificationStateService.ShowNotification(
+                    "No Alternate Package",
+                    $"No alternate package found for {package.Id}",
+                    NotificationSeverity.Warning,
+                    timeout: 3000,
+                    parentWindow: _parentWindow);
+                return new OperationResult { Success = false };
+            }
+
+            var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
+                "Migrate Package",
+                $"Replace {package.Id} with {alternateId}?",
+                parentWindow: _parentWindow);
+            if (!confirm) return new OperationResult { Success = false };
+
+            // Install the alternate package
+            var addResult = await OperationProgressModal.ShowAsync(
+                _windowSystem,
+                OperationType.Add,
+                (ct, progress) => _cliService.AddPackageAsync(
+                    project.FilePath, alternateId, null, ct, progress),
+                "Installing Replacement",
+                $"Installing {alternateId} to replace {package.Id}",
+                _historyService,
+                project.FilePath,
+                project.Name,
+                alternateId,
+                null,
+                _parentWindow);
+
+            if (!addResult.Success) return addResult;
+
+            // Remove the old package
+            var removeResult = await OperationProgressModal.ShowAsync(
+                _windowSystem,
+                OperationType.Remove,
+                (ct, progress) => _cliService.RemovePackageAsync(
+                    project.FilePath, package.Id, ct, progress),
+                "Removing Old Package",
+                $"Removing {package.Id}",
+                _historyService,
+                project.FilePath,
+                project.Name,
+                package.Id,
+                null,
+                _parentWindow);
+
+            InvalidateCacheFor(package.Id);
+            InvalidateCacheFor(alternateId);
+
+            return removeResult;
+        }
+        catch (Exception ex)
+        {
+            await (_errorHandler?.HandleAsync(ex, ErrorSeverity.Critical,
+                "Migration Error", "An error occurred while migrating the package.", "Actions", _parentWindow)
+                ?? Task.CompletedTask);
+            return new OperationResult { Success = false };
+        }
     }
 
     private void InvalidateCacheFor(string packageId)
