@@ -23,7 +23,8 @@ public static class InteractiveDashboardBuilder
         Action onRestore,
         Action<List<PackageReference>> onUpdateSelected,
         Action<List<PackageReference>> onRemoveSelected,
-        Action? onDeps = null)
+        Action? onDeps = null,
+        Action<PackageReference>? onOpenPackage = null)
     {
         var controls = new List<IWindowControl>();
 
@@ -148,6 +149,16 @@ public static class InteractiveDashboardBuilder
             selectionSeparator.Visible = anyChecked;
             selectionToolbar.Visible = anyChecked;
         };
+
+        // Double-click opens the package in the packages view
+        if (onOpenPackage != null)
+        {
+            packageList.MouseDoubleClick += (_, _) =>
+            {
+                if (packageList.SelectedItem?.Tag is PackageReference pkg)
+                    onOpenPackage(pkg);
+            };
+        }
 
         return controls;
     }

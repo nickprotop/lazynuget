@@ -195,7 +195,7 @@ public class NavigationController
         HandleSelectionChanged();
     }
 
-    public void SwitchToPackagesView(ProjectInfo project)
+    public void SwitchToPackagesView(ProjectInfo project, PackageReference? initialPackage = null)
     {
         _currentViewState = ViewState.Packages;
         _selectedProject = project;
@@ -218,13 +218,28 @@ public class NavigationController
         // Update help bar via StatusBarManager
         _statusBarManager?.UpdateHelpBar(_currentViewState);
 
-        // Trigger initial selection to show package details
+        // Determine which index to select
+        int indexToSelect = 0;
+        if (initialPackage != null && _contextList != null)
+        {
+            for (int i = 0; i < _contextList.Items.Count; i++)
+            {
+                if (_contextList.Items[i].Tag is PackageReference pkg &&
+                    pkg.Id.Equals(initialPackage.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    indexToSelect = i;
+                    break;
+                }
+            }
+        }
+
+        // Trigger selection to show package details
         if (_contextList != null && _contextList.Items.Count > 0)
         {
-            var wasZero = _contextList.SelectedIndex == 0;
-            _contextList.SelectedIndex = 0;
-            // If already 0, event won't fire, so call manually
-            if (wasZero)
+            var wasAlready = _contextList.SelectedIndex == indexToSelect;
+            _contextList.SelectedIndex = indexToSelect;
+            // If already at the target index, event won't fire, so call manually
+            if (wasAlready)
             {
                 HandleSelectionChanged();
             }
@@ -373,7 +388,8 @@ public class NavigationController
                 ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Remove Selected Error", "Failed to remove selected packages.", "NuGet", _window)),
             onDeps: () => AsyncHelper.FireAndForget(
                 () => _showDependencyTreeAsync(project, null),
-                ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Dependency Error", "Failed to show dependencies.", "UI", _window)));
+                ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Dependency Error", "Failed to show dependencies.", "UI", _window)),
+            onOpenPackage: pkg => SwitchToPackagesView(project, pkg));
 
         _updateDetailsPanel(controls);
     }
