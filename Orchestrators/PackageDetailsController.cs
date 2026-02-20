@@ -39,6 +39,12 @@ public class PackageDetailsController : IDisposable
 
     public PackageDetailTab CurrentTab => _currentDetailTab;
 
+    /// <summary>
+    /// True when the most recently loaded package's details were served from the in-memory cache.
+    /// Read by LazyNuGetWindow to display a per-package "cached" indicator in the right panel header.
+    /// </summary>
+    public bool LastLoadWasFromCache { get; private set; }
+
     public PackageDetailsController(
         NuGetClientService nugetService,
         ErrorHandler? errorHandler,
@@ -103,8 +109,12 @@ public class PackageDetailsController : IDisposable
         _cachedPackageRef = package;
         _cachedNuGetData = null;
 
-        // Show animated loading state
-        ShowLoadingState(package);
+        // Check cache before showing spinner: cached packages load instantly, no spinner needed
+        LastLoadWasFromCache = _nugetService is NuGetCacheService cacheService
+            && cacheService.IsPackageDetailsCached(package.Id);
+
+        if (!LastLoadWasFromCache)
+            ShowLoadingState(package);
 
         // Fetch package details asynchronously
         AsyncHelper.FireAndForget(

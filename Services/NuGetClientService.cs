@@ -36,7 +36,7 @@ public class NuGetClientService : IDisposable
     /// <summary>
     /// Search for packages across all enabled feeds
     /// </summary>
-    public async Task<List<NuGetPackage>> SearchPackagesAsync(string query, int take = 20, CancellationToken cancellationToken = default)
+    public virtual async Task<List<NuGetPackage>> SearchPackagesAsync(string query, int take = 20, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -108,7 +108,7 @@ public class NuGetClientService : IDisposable
     /// Get detailed information about a specific package.
     /// Tries each enabled feed until the package is found.
     /// </summary>
-    public async Task<NuGetPackage?> GetPackageDetailsAsync(string packageId, CancellationToken cancellationToken = default)
+    public virtual async Task<NuGetPackage?> GetPackageDetailsAsync(string packageId, CancellationToken cancellationToken = default)
     {
         var enabledSources = _repository.GetSources().Where(s => s.IsEnabled).ToList();
 
@@ -215,7 +215,7 @@ public class NuGetClientService : IDisposable
     /// <summary>
     /// Check if a package version is outdated
     /// </summary>
-    public async Task<(bool IsOutdated, string? LatestVersion)> CheckIfOutdatedAsync(
+    public virtual async Task<(bool IsOutdated, string? LatestVersion)> CheckIfOutdatedAsync(
         string packageId,
         string currentVersion,
         CancellationToken cancellationToken = default)

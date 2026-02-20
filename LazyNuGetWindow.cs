@@ -49,7 +49,7 @@ public class LazyNuGetWindow : IDisposable
     // Services
     private ProjectDiscoveryService? _discoveryService;
     private ProjectParserService? _parserService;
-    private NuGetClientService? _nugetService;
+    private NuGetCacheService? _nugetService;
     private DotNetCliService? _cliService;
     private ConfigurationService? _configService;
     private OperationHistoryService? _historyService;
@@ -80,7 +80,7 @@ public class LazyNuGetWindow : IDisposable
         _errorHandler = new ErrorHandler(_windowSystem, _windowSystem.LogService);
 
         // Resolve NuGet sources from config hierarchy and create client
-        _nugetService = CreateNuGetClientService();
+        _nugetService = CreateNuGetCacheService();
 
         // Initialize operation history service
         var configDir = Path.Combine(
@@ -99,7 +99,7 @@ public class LazyNuGetWindow : IDisposable
             ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Load Error", "Failed to load projects.", "Init", _window));
     }
 
-    private NuGetClientService CreateNuGetClientService()
+    private NuGetCacheService CreateNuGetCacheService()
     {
         var sources = _nugetConfigService?.GetEffectiveSources(_currentFolderPath) ?? new List<NuGetSource>();
 
@@ -134,7 +134,7 @@ public class LazyNuGetWindow : IDisposable
             }
         }
 
-        return new NuGetClientService(_windowSystem.LogService, sources.Count > 0 ? sources : null);
+        return new NuGetCacheService(_windowSystem.LogService, sources.Count > 0 ? sources : null);
     }
 
     public void Show()
@@ -316,7 +316,9 @@ public class LazyNuGetWindow : IDisposable
             _detailsPanel,
             _currentFolderPath,
             _projects,
-            action => HandleHelpBarAction(action));
+            onAction:    action => HandleHelpBarAction(action),
+            isCacheWarm: () => _nugetService?.IsAnyCacheWarm ?? false,
+            onRefresh:   TriggerRefresh);
 
         _modalManager = new ModalManager(
             _windowSystem,
@@ -535,12 +537,10 @@ public class LazyNuGetWindow : IDisposable
                     ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Search Error", "Failed to show search.", "UI", _window));
                 e.Handled = true;
             }
-            // Ctrl+R - Reload
+            // Ctrl+R - Reload (clear cache first for a fully fresh NuGet check)
             else if (e.KeyInfo.Key == ConsoleKey.R && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
-                AsyncHelper.FireAndForget(
-                    () => LoadProjectsAsync(),
-                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Reload Error", "Failed to reload projects.", "UI", _window));
+                TriggerRefresh();
                 e.Handled = true;
             }
             // Ctrl+H - Operation history
@@ -645,6 +645,17 @@ public class LazyNuGetWindow : IDisposable
             }
         };
 
+        // Top-right status bar click → delegate to StatusBarManager (e.g. ^R:Refresh hint).
+        // e.Position.X is control-relative (not screen-absolute), so pass ActualWidth
+        // so StatusBar can compute the right-aligned content's left edge correctly.
+        if (_topStatusRight != null)
+        {
+            _topStatusRight.MouseClick += (s, e) =>
+            {
+                _statusBarManager?.HandleStatusBarClick(e.Position.X, _topStatusRight.ActualWidth);
+            };
+        }
+
         // Help bar mouse click → delegate to StatusBarManager for hit-testing
         if (_bottomHelpBar != null)
         {
@@ -712,6 +723,14 @@ public class LazyNuGetWindow : IDisposable
         }
     }
 
+    private void TriggerRefresh()
+    {
+        _nugetService?.ClearAll();
+        AsyncHelper.FireAndForget(
+            () => LoadProjectsAsync(),
+            ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Reload Error", "Failed to reload projects.", "UI", _window));
+    }
+
     private async Task LoadProjectsAsync()
     {
         if (_discoveryService == null || _parserService == null) return;
@@ -727,7 +746,7 @@ public class LazyNuGetWindow : IDisposable
 
             // Re-resolve NuGet sources for the new project directory
             _nugetService?.Dispose();
-            _nugetService = CreateNuGetClientService();
+            _nugetService = CreateNuGetCacheService();
 
             // Update orchestrators with new NuGet service
             _searchCoordinator = new SearchCoordinator(_windowSystem, _nugetService, _cliService!, _historyService!, _errorHandler!, _window);
@@ -886,7 +905,7 @@ public class LazyNuGetWindow : IDisposable
         {
             // Reinitialize NuGet client with updated sources
             _nugetService?.Dispose();
-            _nugetService = CreateNuGetClientService();
+            _nugetService = CreateNuGetCacheService();
 
             // Reload projects to refresh package status
             await LoadProjectsAsync();
@@ -1110,14 +1129,16 @@ public class LazyNuGetWindow : IDisposable
         string title = _navigationController?.CurrentViewState == ViewState.Projects ? "Dashboard" : "Details";
         bool scrollable = IsRightPanelScrollable();
 
+        // Per-package cache indicator: shown in right panel header when details came from cache
+        string cacheTag = (_navigationController?.CurrentViewState == ViewState.Packages
+                           && _packageDetailsController?.LastLoadWasFromCache == true)
+            ? " [grey50]cached[/]"
+            : string.Empty;
+
         if (scrollable)
-        {
-            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/] [grey50](Ctrl+↑↓ to scroll)[/]" });
-        }
+            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/]{cacheTag} [grey50](Ctrl+↑↓ to scroll)[/]" });
         else
-        {
-            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/]" });
-        }
+            _rightPanelHeader.SetContent(new List<string> { $"[grey70]{title}[/]{cacheTag}" });
     }
 
     private void ShowLogViewer()

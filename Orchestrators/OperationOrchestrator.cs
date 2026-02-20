@@ -66,6 +66,7 @@ public class OperationOrchestrator
             package.LatestVersion,
             _parentWindow);
 
+        if (result.Success) InvalidateCacheFor(package.Id);
         return result;
     }
 
@@ -97,6 +98,7 @@ public class OperationOrchestrator
             null,
             _parentWindow);
 
+        if (result.Success) InvalidateCacheFor(package.Id);
         return result;
     }
 
@@ -262,6 +264,7 @@ public class OperationOrchestrator
             null,  // No single version for batch operation
             _parentWindow);
 
+        if (result.Success) InvalidateAllCache();
         return result;
     }
 
@@ -336,7 +339,7 @@ public class OperationOrchestrator
 
         var packageList = packagesToUpdate.Select(p => (p.Id, p.LatestVersion!)).ToList();
 
-        return await OperationProgressModal.ShowAsync(
+        var result = await OperationProgressModal.ShowAsync(
             _windowSystem,
             OperationType.Update,
             (ct, progress) => _cliService.UpdateAllPackagesAsync(
@@ -349,6 +352,13 @@ public class OperationOrchestrator
             null,
             null,
             _parentWindow);
+
+        if (result.Success)
+        {
+            foreach (var pkg in packagesToUpdate)
+                InvalidateCacheFor(pkg.Id);
+        }
+        return result;
     }
 
     /// <summary>
@@ -384,10 +394,23 @@ public class OperationOrchestrator
                 null,
                 _parentWindow);
 
+            if (last.Success) InvalidateCacheFor(package.Id);
             if (!last.Success) break;
         }
 
         return last;
+    }
+
+    private void InvalidateCacheFor(string packageId)
+    {
+        if (_nugetService is NuGetCacheService cache)
+            cache.InvalidatePackage(packageId);
+    }
+
+    private void InvalidateAllCache()
+    {
+        if (_nugetService is NuGetCacheService cache)
+            cache.ClearAll();
     }
 
     /// <summary>
