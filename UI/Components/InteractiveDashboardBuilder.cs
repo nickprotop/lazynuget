@@ -6,6 +6,7 @@ using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI.Utilities;
 using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
+using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
 
 namespace LazyNuGet.UI.Components;
 
@@ -20,6 +21,8 @@ public static class InteractiveDashboardBuilder
         Action onViewPackages,
         Action onUpdateAll,
         Action onRestore,
+        Action<List<PackageReference>> onUpdateSelected,
+        Action<List<PackageReference>> onRemoveSelected,
         Action? onDeps = null)
     {
         var controls = new List<IWindowControl>();
@@ -34,7 +37,7 @@ public static class InteractiveDashboardBuilder
             .Build();
         controls.Add(header);
 
-        // Stats cards (first table)
+        // Stats cards
         var statsCard = BuildStatsCard(project, outdatedPackages);
         controls.Add(statsCard);
 
@@ -47,20 +50,66 @@ public static class InteractiveDashboardBuilder
         var toolbarTop = Controls.Markup()
             .AddEmptyLine()
             .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(Color.Grey15)
+            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
             .WithMargin(1, 0, 1, 0)
             .Build();
         controls.Add(toolbarTop);
 
-        // Action toolbar
-        var toolbar = BuildActionToolbar(outdatedPackages, onViewPackages, onUpdateAll, onRestore, onDeps);
+        // Build bulk action buttons upfront (initially hidden) using closures
+        // to capture the list control reference after it's created below.
+        ListControl? packageList = null;
+
+        var updateSelectedBtn = Controls.Button("[cyan1]Update Selected[/] [grey78](Ctrl+S)[/]")
+            .OnClick((_, _) =>
+            {
+                if (packageList == null) return;
+                var selected = packageList.GetCheckedItems()
+                    .Select(i => (PackageReference)i.Tag!)
+                    .Where(p => p.IsOutdated)
+                    .ToList();
+                if (selected.Any())
+                    onUpdateSelected(selected);
+            })
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .Build();
+
+        var removeSelectedBtn = Controls.Button("[red1]Remove Selected[/] [grey78](Ctrl+Del)[/]")
+            .OnClick((_, _) =>
+            {
+                if (packageList == null) return;
+                var selected = packageList.GetCheckedItems()
+                    .Select(i => (PackageReference)i.Tag!)
+                    .ToList();
+                if (selected.Any())
+                    onRemoveSelected(selected);
+            })
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .Build();
+
+        var deselectAllBtn = Controls.Button("[grey78]Deselect All[/]")
+            .OnClick((_, _) => packageList?.SetAllChecked(false))
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .Build();
+
+        // Action toolbar (top 4 buttons only)
+        var toolbar = BuildActionToolbar(
+            outdatedPackages, onViewPackages, onUpdateAll, onRestore, onDeps);
         controls.Add(toolbar);
 
         // Empty markup below toolbar for background extension
         var toolbarBottom = Controls.Markup()
             .AddEmptyLine()
             .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(Color.Grey15)
+            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
             .WithMargin(1, 0, 1, 0)
             .Build();
         controls.Add(toolbarBottom);
@@ -70,9 +119,35 @@ public static class InteractiveDashboardBuilder
         separatorAfter.Margin = new Margin(1, 0, 1, 0);
         controls.Add(separatorAfter);
 
-        // Package summary table
-        var summary = BuildPackageSummary(project, outdatedPackages);
-        controls.Add(summary);
+        // Hint line above the checkbox list
+        var hint = Controls.Markup()
+            .AddLine("[grey50]Space: toggle · Tab: reach bulk actions[/]")
+            .WithMargin(1, 0, 1, 0)
+            .Build();
+        controls.Add(hint);
+
+        // Build checkbox package list
+        packageList = BuildCheckboxPackageList(project);
+        controls.Add(packageList);
+
+        // Separator above secondary action bar (hidden until items are checked)
+        var selectionSeparator = Controls.Rule();
+        selectionSeparator.Margin = new Margin(1, 0, 1, 0);
+        selectionSeparator.Visible = false;
+        controls.Add(selectionSeparator);
+
+        // Secondary action bar (hidden until items are checked)
+        var selectionToolbar = BuildSelectionToolbar(updateSelectedBtn, removeSelectedBtn, deselectAllBtn);
+        selectionToolbar.Visible = false;
+        controls.Add(selectionToolbar);
+
+        // Wire up CheckedItemsChanged to show/hide the secondary action bar
+        packageList.CheckedItemsChanged += (_, _) =>
+        {
+            var anyChecked = packageList.GetCheckedItems().Any();
+            selectionSeparator.Visible = anyChecked;
+            selectionToolbar.Visible = anyChecked;
+        };
 
         return controls;
     }
@@ -98,56 +173,45 @@ public static class InteractiveDashboardBuilder
             .Build();
     }
 
-    private static IWindowControl BuildPackageSummary(ProjectInfo project, List<PackageReference> outdatedPackages)
+    private static ListControl BuildCheckboxPackageList(ProjectInfo project)
     {
         if (project.Packages.Count == 0)
         {
-            return Controls.Markup()
-                .AddLine("[grey50]No packages installed[/]")
-                .AddEmptyLine()
-                .WithMargin(1, 0, 0, 0)
+            // Return an empty, non-interactive list with a placeholder
+            var empty = ListControl.Create()
+                .AddItem("[grey50]No packages installed[/]")
+                .WithMargin(1, 1, 1, 0)
+                .WithName("packageCheckboxList")
+                .WithAlignment(HorizontalAlignment.Stretch)
+                .WithVerticalAlignment(VerticalAlignment.Fill)
+                .Selectable(false)
                 .Build();
+            return empty;
         }
 
-        // Create table with proper TableControl
-        var table = Controls.Table()
-            .AddColumn("St", Spectre.Console.Justify.Center, 4)
-            .AddColumn("Package", Spectre.Console.Justify.Left)
-            .AddColumn("Version", Spectre.Console.Justify.Left)
-            .WithBorderColor(Color.Grey50)
-            .SingleLine()
-            .ShowHeader()
-            .ShowRowSeparators()
-            .WithHeaderColors(Color.Grey70, Color.Black)
-            .WithBackgroundColor(null)
-            .WithMargin(1, 1, 0, 0);
+        var builder = ListControl.Create()
+            .WithCheckboxMode()
+            .WithTitle($"Packages ({project.Packages.Count})")
+            .WithMargin(1, 1, 1, 0)
+            .WithName("packageCheckboxList")
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithVerticalAlignment(VerticalAlignment.Fill);
 
-        // Add package rows
         foreach (var pkg in project.Packages)
         {
-            string status = pkg.IsOutdated ? "[yellow]⚠[/]" : "[green]✓[/]";
-            string packageName = Markup.Escape(pkg.Id);
+            string statusPrefix = pkg.IsOutdated ? "[yellow]⚠[/] " : "[green]✓[/] ";
+            string name = Markup.Escape(pkg.Id);
+            string versionInfo = pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion)
+                ? $"[grey70]{Markup.Escape(pkg.Version)}[/] [yellow]→ {Markup.Escape(pkg.LatestVersion)}[/]"
+                : $"[grey70]{Markup.Escape(pkg.Version)}[/]";
 
-            // Truncate package name if too long (max 28 chars to fit in column) -- removed, let overflow
-            //if (packageName.Length > 28)
-            //{
-            //    packageName = packageName.Substring(0, 25) + "...";
-            //}
+            // Pad package name to create pseudo-columns
+            string text = $"{statusPrefix}{name,-30} {versionInfo}";
 
-            string versionInfo;
-            if (pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion))
-            {
-                versionInfo = $"[grey70]{Markup.Escape(pkg.Version)}[/] [yellow]→ {Markup.Escape(pkg.LatestVersion)}[/]";
-            }
-            else
-            {
-                versionInfo = $"[grey70]{Markup.Escape(pkg.Version)}[/]";
-            }
-
-            table.AddRow(status, $"[grey70]{packageName}[/]", versionInfo);
+            builder.AddItem(new ListItem(text) { Tag = pkg });
         }
 
-        return table.Build();
+        return builder.Build();
     }
 
     private static IWindowControl BuildActionToolbar(
@@ -211,7 +275,20 @@ public static class InteractiveDashboardBuilder
             .AddButton(restoreBtn)
             .WithSpacing(2)
             .WithWrap()
-            .WithBackgroundColor(Color.Grey15)
+            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
+            .WithMargin(1, 0, 1, 0)
+            .Build();
+    }
+
+    private static IWindowControl BuildSelectionToolbar(ButtonControl updateSelectedBtn, ButtonControl removeSelectedBtn, ButtonControl deselectAllBtn)
+    {
+        return Controls.Toolbar()
+            .AddButton(updateSelectedBtn)
+            .AddButton(removeSelectedBtn)
+            .AddButton(deselectAllBtn)
+            .WithSpacing(2)
+            .WithWrap()
+            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
             .WithMargin(1, 0, 1, 0)
             .Build();
     }

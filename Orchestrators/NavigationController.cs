@@ -28,6 +28,7 @@ public class NavigationController
     private readonly Func<ProjectInfo, Task> _handleRestoreAsync;
     private readonly Func<ProjectInfo, PackageReference?, Task> _showDependencyTreeAsync;
     private readonly Func<Task> _confirmExitAsync;
+    private readonly OperationOrchestrator? _operationOrchestrator;
 
     private ViewState _currentViewState = ViewState.Projects;
     private ProjectInfo? _selectedProject;
@@ -53,7 +54,8 @@ public class NavigationController
         Func<ProjectInfo, Task> handleUpdateAllAsync,
         Func<ProjectInfo, Task> handleRestoreAsync,
         Func<ProjectInfo, PackageReference?, Task> showDependencyTreeAsync,
-        Func<Task> confirmExitAsync)
+        Func<Task> confirmExitAsync,
+        OperationOrchestrator? operationOrchestrator = null)
     {
         _contextList = contextList;
         _leftPanelHeader = leftPanelHeader;
@@ -69,6 +71,7 @@ public class NavigationController
         _handleRestoreAsync = handleRestoreAsync;
         _showDependencyTreeAsync = showDependencyTreeAsync;
         _confirmExitAsync = confirmExitAsync;
+        _operationOrchestrator = operationOrchestrator;
     }
 
     public void SwitchToProjectsView()
@@ -362,6 +365,12 @@ public class NavigationController
             onViewPackages: () => SwitchToPackagesView(project),
             onUpdateAll: () => HandleUpdateAll(project),
             onRestore: () => HandleRestore(project),
+            onUpdateSelected: packages => AsyncHelper.FireAndForget(
+                () => _operationOrchestrator?.HandleUpdateSelectedAsync(packages, project) ?? Task.CompletedTask,
+                ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Update Selected Error", "Failed to update selected packages.", "NuGet", _window)),
+            onRemoveSelected: packages => AsyncHelper.FireAndForget(
+                () => _operationOrchestrator?.HandleRemoveSelectedAsync(packages, project) ?? Task.CompletedTask,
+                ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Remove Selected Error", "Failed to remove selected packages.", "NuGet", _window)),
             onDeps: () => AsyncHelper.FireAndForget(
                 () => _showDependencyTreeAsync(project, null),
                 ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Dependency Error", "Failed to show dependencies.", "UI", _window)));

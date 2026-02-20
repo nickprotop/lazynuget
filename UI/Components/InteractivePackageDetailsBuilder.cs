@@ -131,6 +131,7 @@ public static class InteractivePackageDetailsBuilder
             .AddTab("What's New", BuildWhatsNewPanel(nugetData, package))
             .WithActiveTab(initialTab)
             .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
+            .WithHeaderStyle(TabHeaderStyle.Separator)
             .WithMargin(1, 1, 1, 0)
             .WithName("packageTabs")
             .Build();

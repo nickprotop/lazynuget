@@ -288,6 +288,109 @@ public class OperationOrchestrator
     }
 
     /// <summary>
+    /// Handle updating a selected subset of packages
+    /// </summary>
+    public async Task<OperationResult> HandleUpdateSelectedAsync(
+        List<PackageReference> packages,
+        ProjectInfo project)
+    {
+        var outdated = packages.Where(p => p.IsOutdated && !string.IsNullOrEmpty(p.LatestVersion)).ToList();
+        if (!outdated.Any())
+            return new OperationResult { Success = false };
+
+        // Show update strategy modal (same as UpdateAll)
+        var strategy = await UpdateStrategyModal.ShowAsync(
+            _windowSystem,
+            outdated,
+            project.Name,
+            _parentWindow);
+
+        if (strategy == null)
+            return new OperationResult { Success = false };
+
+        // Filter packages based on strategy
+        var packagesToUpdate = outdated
+            .Where(p => VersionComparisonService.IsUpdateAllowed(
+                p.Version,
+                p.LatestVersion!,
+                strategy.Value))
+            .ToList();
+
+        if (!packagesToUpdate.Any())
+        {
+            _windowSystem.NotificationStateService.ShowNotification(
+                "No Updates Available",
+                $"No packages match the selected update strategy ({strategy.Value.GetDisplayName()})",
+                NotificationSeverity.Info,
+                timeout: 3000,
+                parentWindow: _parentWindow);
+            return new OperationResult { Success = false };
+        }
+
+        var confirmMessage = $"Update {packagesToUpdate.Count} selected package(s) in {project.Name}?";
+        var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
+            "Update Selected Packages",
+            confirmMessage,
+            parentWindow: _parentWindow);
+        if (!confirm) return new OperationResult { Success = false };
+
+        var packageList = packagesToUpdate.Select(p => (p.Id, p.LatestVersion!)).ToList();
+
+        return await OperationProgressModal.ShowAsync(
+            _windowSystem,
+            OperationType.Update,
+            (ct, progress) => _cliService.UpdateAllPackagesAsync(
+                project.FilePath, packageList, ct, progress),
+            "Updating Selected Packages",
+            $"Updating {packageList.Count} packages in {project.Name}",
+            _historyService,
+            project.FilePath,
+            project.Name,
+            null,
+            null,
+            _parentWindow);
+    }
+
+    /// <summary>
+    /// Handle removing a selected set of packages from a project
+    /// </summary>
+    public async Task<OperationResult> HandleRemoveSelectedAsync(
+        List<PackageReference> packages,
+        ProjectInfo project)
+    {
+        if (!packages.Any())
+            return new OperationResult { Success = false };
+
+        var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
+            "Remove Selected Packages",
+            $"Remove {packages.Count} package(s) from {project.Name}?",
+            parentWindow: _parentWindow);
+        if (!confirm) return new OperationResult { Success = false };
+
+        OperationResult last = new OperationResult { Success = true };
+        foreach (var package in packages)
+        {
+            last = await OperationProgressModal.ShowAsync(
+                _windowSystem,
+                OperationType.Remove,
+                (ct, progress) => _cliService.RemovePackageAsync(
+                    project.FilePath, package.Id, ct, progress),
+                "Removing Package",
+                $"Removing {package.Id} from {project.Name}",
+                _historyService,
+                project.FilePath,
+                project.Name,
+                package.Id,
+                null,
+                _parentWindow);
+
+            if (!last.Success) break;
+        }
+
+        return last;
+    }
+
+    /// <summary>
     /// Show operation history modal
     /// </summary>
     public async Task ShowOperationHistoryAsync()

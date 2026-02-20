@@ -375,7 +375,8 @@ public class LazyNuGetWindow : IDisposable
             proj => HandleUpdateAllAsync(proj),
             proj => HandleRestoreAsync(proj),
             (proj, pkg) => ShowDependencyTreeAsync(proj, pkg),
-            () => ConfirmExitAsync());
+            () => ConfirmExitAsync(),
+            _operationOrchestrator);
     }
 
     private async Task RefreshThreadAsync(Window window, CancellationToken ct)
@@ -446,12 +447,13 @@ public class LazyNuGetWindow : IDisposable
             // If list is focused, let it handle arrows itself
             if (e.KeyInfo.Key == ConsoleKey.UpArrow && e.KeyInfo.Modifiers == 0 && _contextList != null && _contextList.Items.Count > 0)
             {
-                if (_windowSystem.FocusStateService.FocusedControl == _contextList)
+                var fc = _windowSystem.FocusStateService.FocusedControl;
+                if (fc is ListControl)
                 {
-                    return; // List will handle it
+                    return; // Any focused ListControl handles its own arrows
                 }
 
-                // List not focused - we handle it (global navigation)
+                // Nothing else focused - global navigation on left panel
                 if (_contextList.SelectedIndex > 0)
                     _contextList.SelectedIndex--;
                 e.Handled = true;
@@ -459,12 +461,13 @@ public class LazyNuGetWindow : IDisposable
             }
             if (e.KeyInfo.Key == ConsoleKey.DownArrow && e.KeyInfo.Modifiers == 0 && _contextList != null && _contextList.Items.Count > 0)
             {
-                if (_windowSystem.FocusStateService.FocusedControl == _contextList)
+                var fc = _windowSystem.FocusStateService.FocusedControl;
+                if (fc is ListControl)
                 {
-                    return; // List will handle it
+                    return; // Any focused ListControl handles its own arrows
                 }
 
-                // List not focused - we handle it (global navigation)
+                // Nothing else focused - global navigation on left panel
                 if (_contextList.SelectedIndex < _contextList.Items.Count - 1)
                     _contextList.SelectedIndex++;
                 e.Handled = true;
