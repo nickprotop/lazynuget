@@ -97,36 +97,27 @@ public class NavigationController
         _statusBarManager?.UpdateHeadersForProjects();
         _statusBarManager?.UpdateBreadcrumbForProjects();
 
-        // Populate project list
+        // Populate project list (grouped by solution)
         _contextList?.ClearItems();
-        foreach (var project in projects)
-        {
-            var displayText = $"[cyan1]{Markup.Escape(project.Name)}[/]\n" +
-                            $"[grey70]  📦 {project.Packages.Count} packages · {project.TargetFramework}[/]";
-
-            if (project.OutdatedCount > 0)
-            {
-                displayText += $"\n[yellow]  ⚠ {project.OutdatedCount} outdated[/]";
-            }
-            else
-            {
-                displayText += $"\n[green]  ✓ All up-to-date[/]";
-            }
-
-            _contextList?.AddItem(new ListItem(displayText) { Tag = project });
-        }
+        PopulateProjectsList(projects);
 
         // Update help bar via StatusBarManager
         _statusBarManager?.UpdateHelpBar(_currentViewState);
 
-        // Restore previous selection or default to first
+        // Restore previous selection or default to first selectable item
         if (_contextList != null && _contextList.Items.Count > 0)
         {
-            var restoreIndex = 0;
+            var restoreIndex = FindFirstSelectableIndex();
             if (previousProject != null)
             {
-                restoreIndex = projects.FindIndex(p => p.FilePath == previousProject.FilePath);
-                if (restoreIndex < 0) restoreIndex = 0;
+                for (int i = 0; i < _contextList.Items.Count; i++)
+                {
+                    if (_contextList.Items[i].Tag is ProjectInfo p && p.FilePath == previousProject.FilePath)
+                    {
+                        restoreIndex = i;
+                        break;
+                    }
+                }
             }
             var wasAtIndex = _contextList.SelectedIndex == restoreIndex;
             _contextList.SelectedIndex = restoreIndex;
@@ -157,22 +148,7 @@ public class NavigationController
                 var projects = _getProjects();
                 // Rebuild project list items (display text includes outdated counts)
                 _contextList.ClearItems();
-                foreach (var project in projects)
-                {
-                    var displayText = $"[cyan1]{Markup.Escape(project.Name)}[/]\n" +
-                                    $"[grey70]  📦 {project.Packages.Count} packages · {project.TargetFramework}[/]";
-
-                    if (project.OutdatedCount > 0)
-                    {
-                        displayText += $"\n[yellow]  ⚠ {project.OutdatedCount} outdated[/]";
-                    }
-                    else
-                    {
-                        displayText += $"\n[green]  ✓ All up-to-date[/]";
-                    }
-
-                    _contextList.AddItem(new ListItem(displayText) { Tag = project });
-                }
+                PopulateProjectsList(projects);
 
                 // Restore selection
                 if (selectedIndex >= 0 && selectedIndex < _contextList.Items.Count)
@@ -278,6 +254,45 @@ public class NavigationController
         }
     }
 
+    private void PopulateProjectsList(List<ProjectInfo> projects)
+    {
+        // Group by SolutionName (null = orphan)
+        var grouped = projects
+            .GroupBy(p => p.SolutionName)
+            .OrderBy(g => g.Key == null ? 1 : 0)  // solutions first, orphans last
+            .ThenBy(g => g.Key ?? "(no solution)")
+            .ToList();
+
+        var needHeaders = grouped.Count > 1 || grouped.Any(g => g.Key != null);
+
+        foreach (var group in grouped)
+        {
+            if (needHeaders)
+            {
+                var headerName = group.Key ?? "(no solution)";
+                var header = new ListItem($"[grey50]── {Markup.Escape(headerName)} ──[/]");
+                header.Tag = null; // Non-selectable sentinel
+                _contextList?.AddItem(header);
+            }
+
+            foreach (var project in group)
+            {
+                var tfDisplay = project.TargetFrameworks.Any()
+                    ? string.Join(" | ", project.TargetFrameworks)
+                    : project.TargetFramework;
+                var displayText = $"[cyan1]{Markup.Escape(project.Name)}[/]\n" +
+                                $"[grey70]  📦 {project.Packages.Count} packages · {Markup.Escape(tfDisplay)}[/]";
+
+                if (project.OutdatedCount > 0)
+                    displayText += $"\n[yellow]  ⚠ {project.OutdatedCount} outdated[/]";
+                else
+                    displayText += $"\n[green]  ✓ All up-to-date[/]";
+
+                _contextList?.AddItem(new ListItem(displayText) { Tag = project });
+            }
+        }
+    }
+
     public void PopulatePackagesList(IEnumerable<PackageReference> packages)
     {
         _contextList?.ClearItems();
@@ -352,6 +367,17 @@ public class NavigationController
                 }
                 break;
         }
+    }
+
+    private int FindFirstSelectableIndex()
+    {
+        if (_contextList == null) return 0;
+        for (int i = 0; i < _contextList.Items.Count; i++)
+        {
+            if (_contextList.Items[i].Tag is ProjectInfo)
+                return i;
+        }
+        return 0;
     }
 
     private void UpdateLeftPanelHeader(string content)
