@@ -19,6 +19,12 @@ public class PackageReference
         }
     }
     public bool HasVulnerability { get; set; }
+    public List<VulnerabilityInfo> Vulnerabilities { get; set; } = new();
+    public string? LatestPrereleaseVersion { get; set; }
+    public bool HasNewerPrerelease =>
+        !string.IsNullOrEmpty(LatestPrereleaseVersion) &&
+        LatestPrereleaseVersion != LatestVersion &&
+        !IsOutdated; // only show prerelease hint when stable track is current
     public DateTime? LastUpdated { get; set; }
 
     public string DisplayStatus
