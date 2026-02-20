@@ -315,7 +315,8 @@ public class LazyNuGetWindow : IDisposable
             _rightPanelHeader,
             _detailsPanel,
             _currentFolderPath,
-            _projects);
+            _projects,
+            action => HandleHelpBarAction(action));
 
         _modalManager = new ModalManager(
             _windowSystem,
@@ -643,6 +644,15 @@ public class LazyNuGetWindow : IDisposable
                 e.Handled = true;
             }
         };
+
+        // Help bar mouse click → delegate to StatusBarManager for hit-testing
+        if (_bottomHelpBar != null)
+        {
+            _bottomHelpBar.MouseClick += (s, e) =>
+            {
+                _statusBarManager?.HandleHelpBarClick(e.Position.X);
+            };
+        }
 
         // List selection changed
         if (_contextList != null)
@@ -1114,6 +1124,50 @@ public class LazyNuGetWindow : IDisposable
     {
         // Create fresh log viewer on demand (constructor builds UI and shows it)
         _logViewer = new LogViewerWindow(_windowSystem);
+    }
+
+    private void HandleHelpBarAction(string action)
+    {
+        switch (action)
+        {
+            case "open":
+                AsyncHelper.FireAndForget(
+                    () => PromptForFolderAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Critical, "Folder Error", "Failed to open folder.", "UI", _window));
+                break;
+            case "search":
+                AsyncHelper.FireAndForget(
+                    () => ShowSearchModalAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Search Error", "Failed to show search.", "UI", _window));
+                break;
+            case "history":
+                AsyncHelper.FireAndForget(
+                    () => ShowOperationHistoryAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "History Error", "Failed to show history.", "UI", _window));
+                break;
+            case "settings":
+                AsyncHelper.FireAndForget(
+                    () => ShowSettingsAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Settings Error", "Failed to show settings.", "UI", _window));
+                break;
+            case "help":
+                AsyncHelper.FireAndForget(
+                    () => HelpModal.ShowAsync(_windowSystem, _window),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Help Error", "Failed to show help.", "UI", _window));
+                break;
+            case "exit":
+                AsyncHelper.FireAndForget(
+                    () => ConfirmExitAsync(),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "Exit Error", "Failed to exit.", "UI", _window));
+                break;
+            case "filter":
+                if (_navigationController?.CurrentViewState == ViewState.Packages)
+                    _filterController?.EnterFilterMode();
+                break;
+            case "back":
+                _navigationController?.HandleEscapeKey();
+                break;
+        }
     }
 
     // UpdatePanelFocusIndicators method removed - panel title highlighting feature disabled

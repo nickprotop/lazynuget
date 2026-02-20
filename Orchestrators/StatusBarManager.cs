@@ -17,6 +17,8 @@ public class StatusBarManager
     private readonly MarkupControl? _leftPanelHeader;
     private readonly MarkupControl? _rightPanelHeader;
     private readonly ScrollablePanelControl? _detailsPanel;
+    private readonly HelpBar _helpBar;
+    private readonly Action<string>? _onAction;
 
     private string _currentFolderPath;
     private List<ProjectInfo> _projects;
@@ -29,7 +31,8 @@ public class StatusBarManager
         MarkupControl? rightPanelHeader,
         ScrollablePanelControl? detailsPanel,
         string currentFolderPath,
-        List<ProjectInfo> projects)
+        List<ProjectInfo> projects,
+        Action<string>? onAction = null)
     {
         _topStatusLeft = topStatusLeft;
         _topStatusRight = topStatusRight;
@@ -39,6 +42,8 @@ public class StatusBarManager
         _detailsPanel = detailsPanel;
         _currentFolderPath = currentFolderPath;
         _projects = projects;
+        _onAction = onAction;
+        _helpBar = new HelpBar(marginLeft: 1); // matches MarkupControl's left margin
     }
 
     /// <summary>
@@ -141,16 +146,51 @@ public class StatusBarManager
     }
 
     /// <summary>
-    /// Get help text for the current view state
+    /// Handle a mouse click on the help bar at the given X position.
+    /// </summary>
+    public bool HandleHelpBarClick(int x)
+    {
+        return _helpBar.HandleClick(x);
+    }
+
+    /// <summary>
+    /// Build help bar items for the current view state and return rendered markup.
     /// </summary>
     private string GetHelpText(ViewState viewState)
     {
-        return viewState switch
+        _helpBar.Clear();
+
+        switch (viewState)
         {
-            ViewState.Projects => $"[cyan1][Projects][/]  [cyan1]↑↓[/][grey70]:Navigate  [/][cyan1]Ctrl+↑↓[/][grey70]:Scroll  [/][cyan1]Enter[/][grey70]:View  [/][cyan1]Ctrl+O[/][grey70]:Open  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+H[/][grey70]:History  [/][cyan1]Ctrl+P[/][grey70]:Settings  [/][cyan1]?[/][grey70]:Help  [/][cyan1]Esc[/][grey70]:Exit[/]",
-            ViewState.Packages => $"[cyan1][Packages][/]  [cyan1]↑↓[/][grey70]:Navigate  [/][cyan1]Ctrl+↑↓[/][grey70]:Scroll  [/][cyan1]F1-F4[/][grey70]:Tabs  [/][cyan1]Ctrl+O[/][grey70]:Open  [/][cyan1]Ctrl+S[/][grey70]:Search  [/][cyan1]Ctrl+F[/][grey70]:Filter  [/][cyan1]?[/][grey70]:Help  [/][cyan1]Esc[/][grey70]:Back[/]",
-            _ => "[grey70]?:Help[/]"
-        };
+            case ViewState.Projects:
+                _helpBar
+                    .Add("↑↓", "Navigate")
+                    .Add("Ctrl+↑↓", "Scroll")
+                    .Add("Enter", "View")
+                    .Add("Ctrl+O", "Open", () => _onAction?.Invoke("open"))
+                    .Add("Ctrl+S", "Search", () => _onAction?.Invoke("search"))
+                    .Add("Ctrl+H", "History", () => _onAction?.Invoke("history"))
+                    .Add("Ctrl+P", "Settings", () => _onAction?.Invoke("settings"))
+                    .Add("?", "Help", () => _onAction?.Invoke("help"))
+                    .Add("Esc", "Exit", () => _onAction?.Invoke("exit"));
+                break;
+            case ViewState.Packages:
+                _helpBar
+                    .Add("↑↓", "Navigate")
+                    .Add("Ctrl+↑↓", "Scroll")
+                    .Add("F1-F4", "Tabs")
+                    .Add("Ctrl+O", "Open", () => _onAction?.Invoke("open"))
+                    .Add("Ctrl+S", "Search", () => _onAction?.Invoke("search"))
+                    .Add("Ctrl+F", "Filter", () => _onAction?.Invoke("filter"))
+                    .Add("?", "Help", () => _onAction?.Invoke("help"))
+                    .Add("Esc", "Back", () => _onAction?.Invoke("back"));
+                break;
+            default:
+                _helpBar.Add("?", "Help", () => _onAction?.Invoke("help"));
+                break;
+        }
+
+        return _helpBar.Render();
     }
 
     /// <summary>
