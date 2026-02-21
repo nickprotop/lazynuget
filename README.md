@@ -101,7 +101,7 @@ LazyNuGet is fully usable with both keyboard and mouse. Click to focus controls,
 
 ### .NET Global Tool (Recommended for .NET developers)
 
-If you have .NET 9.0 or later installed:
+If you have .NET 10.0 or later installed:
 
 ```bash
 dotnet tool install --global LazyNuGet
@@ -189,7 +189,7 @@ sudo mv lazynuget-linux-x64 /usr/local/bin/lazynuget
 ### Build from Source
 
 Requirements:
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - Terminal with Unicode support
 
 ```bash
