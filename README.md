@@ -49,7 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/nickprotop/lazynuget/main/install.s
 lazynuget
 ```
 
-That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctrl+S` to search NuGet.org.
+That's it! Use arrow keys (or the mouse) to navigate, `Enter` to view package details, and `Ctrl+S` to search NuGet.org.
 
 ## Features
 
@@ -68,6 +68,10 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 | 🧪 **Prerelease** | Prerelease version hints in package details |
 | 📦 **CPM** | Full Central Package Management support — versions resolved from `Directory.Packages.props` |
 | ⚙️ **Configuration** | Private feeds, custom sources, settings |
+
+## Input
+
+LazyNuGet is fully usable with both keyboard and mouse. Click to focus controls, scroll lists, and activate buttons. Keyboard shortcuts are available for every action and are the fastest way to navigate.
 
 ## Keyboard Shortcuts
 
