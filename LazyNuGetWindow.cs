@@ -380,8 +380,12 @@ public class LazyNuGetWindow : IDisposable
             pkg => HandleRemovePackageAsync(pkg),
             (proj, pkg) => ShowDependencyTreeAsync(proj, pkg));
 
-        // Wire migrate callback into package details controller
+        // Wire migrate callbacks into package details controller
         _packageDetailsController.SetMigrateCallback(pkg => HandleMigratePackageAsync(pkg));
+        _packageDetailsController.SetMigrateProjectCallback(
+            () => _navigationController?.SelectedProject != null
+                ? HandleMigrateProjectAsync(_navigationController.SelectedProject)
+                : Task.CompletedTask);
 
         _filterController = new PackageFilterController(
             _contextList,
@@ -404,7 +408,8 @@ public class LazyNuGetWindow : IDisposable
             () => _navigationController?.CurrentViewState ?? ViewState.Projects,
             () => _filterController?.IsFilterMode == true,
             () => _navigationController?.RefreshCurrentView(),
-            () => _projects);
+            () => _projects,
+            () => _navigationController?.SelectedProject?.IsPackagesConfig == true);
 
         _navigationController = new NavigationController(
             _contextList,
@@ -1263,7 +1268,9 @@ public class LazyNuGetWindow : IDisposable
 
         // Update header and help bar to reflect new content state via StatusBarManager
         UpdateRightPanelHeader();
-        _statusBarManager?.UpdateHelpBar(_navigationController?.CurrentViewState ?? ViewState.Projects);
+        _statusBarManager?.UpdateHelpBar(
+            _navigationController?.CurrentViewState ?? ViewState.Projects,
+            _navigationController?.SelectedProject?.IsPackagesConfig == true);
     }
 
     private void UpdateDetailsPanel(List<IWindowControl> controls)
@@ -1285,7 +1292,9 @@ public class LazyNuGetWindow : IDisposable
 
         // Update header and help bar to reflect new content state via StatusBarManager
         UpdateRightPanelHeader();
-        _statusBarManager?.UpdateHelpBar(_navigationController?.CurrentViewState ?? ViewState.Projects);
+        _statusBarManager?.UpdateHelpBar(
+            _navigationController?.CurrentViewState ?? ViewState.Projects,
+            _navigationController?.SelectedProject?.IsPackagesConfig == true);
     }
 
     private bool IsRightPanelScrollable()

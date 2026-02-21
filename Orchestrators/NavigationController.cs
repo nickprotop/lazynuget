@@ -413,6 +413,18 @@ public class NavigationController
 
     private void ShowProjectDashboard(ProjectInfo project)
     {
+        if (project.IsPackagesConfig)
+        {
+            var legacyControls = InteractiveDashboardBuilder.BuildLegacyDashboard(
+                project,
+                onViewPackages: () => SwitchToPackagesView(project),
+                onMigrate: _handleMigrateProjectAsync == null ? null : () => AsyncHelper.FireAndForget(
+                    () => _handleMigrateProjectAsync(project),
+                    ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Migration Error", "Failed to migrate project.", "Migration", _window)));
+            _updateDetailsPanel(legacyControls);
+            return;
+        }
+
         // Get outdated packages
         var outdatedPackages = project.Packages
             .Where(p => p.IsOutdated)

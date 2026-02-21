@@ -340,6 +340,111 @@ public static class InteractiveDashboardBuilder
             .Build();
     }
 
+    public static List<IWindowControl> BuildLegacyDashboard(
+        ProjectInfo project,
+        Action onViewPackages,
+        Action? onMigrate = null)
+    {
+        var controls = new List<IWindowControl>();
+
+        // Project header with legacy badge
+        var frameworkDisplay = project.TargetFrameworks.Any()
+            ? string.Join(" | ", project.TargetFrameworks)
+            : project.TargetFramework;
+        var header = Controls.Markup()
+            .AddLine($"[cyan1 bold]Project: {Markup.Escape(project.Name)}[/] [grey50][legacy][/]")
+            .AddLine($"[grey70]Path: {Markup.Escape(ShortenPath(project.FilePath))}[/]")
+            .AddLine($"[grey70]Framework: {Markup.Escape(frameworkDisplay)}[/]")
+            .AddEmptyLine()
+            .WithMargin(1, 1, 0, 0)
+            .Build();
+        controls.Add(header);
+
+        // Package count info
+        var statsCard = Controls.Markup()
+            .AddLine($"[grey70]📦 {project.Packages.Count} packages (read-only, packages.config)[/]")
+            .WithMargin(1, 0, 0, 0)
+            .Build();
+        controls.Add(statsCard);
+
+        // Separator
+        var separator = Controls.Rule("[yellow]Migration Required[/]");
+        separator.Margin = new Margin(1, 1, 1, 0);
+        controls.Add(separator);
+
+        // Migration notice
+        var notice = Controls.Markup()
+            .AddLine("[grey70]This project uses [yellow]packages.config[/] (legacy format).[/]")
+            .AddLine("[grey70]Package operations require migration to [cyan1]PackageReference[/] first.[/]")
+            .AddEmptyLine()
+            .WithMargin(1, 0, 1, 0)
+            .Build();
+        controls.Add(notice);
+
+        // Action toolbar: View Packages + Migrate
+        var viewBtn = Controls.Button("[cyan1]View Packages[/] [grey78](Enter)[/]")
+            .OnClick((s, e) => onViewPackages())
+            .WithMargin(1, 0, 0, 0)
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .Build();
+
+        var migrateBtn = Controls.Button("[yellow]Migrate[/] [grey78](Ctrl+M)[/]")
+            .OnClick((s, e) => onMigrate?.Invoke())
+            .Enabled(onMigrate != null)
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .Build();
+
+        var toolbar = Controls.Toolbar()
+            .AddButton(viewBtn)
+            .AddButton(migrateBtn)
+            .WithSpacing(2)
+            .WithWrap()
+            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
+            .WithMargin(1, 0, 1, 0)
+            .Build();
+        controls.Add(toolbar);
+
+        // Separator after toolbar
+        var separatorAfter = Controls.Rule();
+        separatorAfter.Margin = new Margin(1, 0, 1, 0);
+        controls.Add(separatorAfter);
+
+        // Read-only package list
+        if (project.Packages.Count == 0)
+        {
+            var empty = Controls.Markup()
+                .AddLine("[grey50]No packages in packages.config[/]")
+                .WithMargin(1, 1, 1, 0)
+                .Build();
+            controls.Add(empty);
+        }
+        else
+        {
+            var listBuilder = ListControl.Create()
+                .WithTitle($"Packages ({project.Packages.Count}) — read-only")
+                .WithMargin(1, 1, 1, 0)
+                .WithName("legacyPackageList")
+                .WithAlignment(HorizontalAlignment.Stretch)
+                .WithVerticalAlignment(VerticalAlignment.Fill)
+                .Selectable(false);
+
+            foreach (var pkg in project.Packages)
+            {
+                listBuilder.AddItem(new ListItem($"[grey70]{Markup.Escape(pkg.Id)}[/] [grey50]{Markup.Escape(pkg.Version)}[/]"));
+            }
+
+            controls.Add(listBuilder.Build());
+        }
+
+        return controls;
+    }
+
     internal static string ShortenPath(string path)
     {
         try

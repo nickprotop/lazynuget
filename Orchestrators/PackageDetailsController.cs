@@ -27,6 +27,7 @@ public class PackageDetailsController : IDisposable
     private readonly Func<PackageReference, Task> _onRemovePackage;
     private readonly Func<ProjectInfo, PackageReference?, Task> _onShowDependencyTree;
     private Func<PackageReference, Task>? _onMigratePackage;
+    private Func<Task>? _onMigrateProject;
 
     private PackageDetailTab _currentDetailTab = PackageDetailTab.Overview;
     private PackageReference? _cachedPackageRef;
@@ -80,6 +81,11 @@ public class PackageDetailsController : IDisposable
         _onMigratePackage = onMigratePackage;
     }
 
+    public void SetMigrateProjectCallback(Func<Task>? onMigrateProject)
+    {
+        _onMigrateProject = onMigrateProject;
+    }
+
     public bool HandleDetailTabShortcut(ConsoleKey key)
     {
         var tabIndex = key switch
@@ -131,6 +137,7 @@ public class PackageDetailsController : IDisposable
     {
         if (_cachedPackageRef == null) return;
 
+        var isLegacy = _getSelectedProject()?.IsPackagesConfig == true;
         var controls = InteractivePackageDetailsBuilder.BuildInteractiveDetails(
             _cachedPackageRef,
             _cachedNuGetData,
@@ -139,7 +146,9 @@ public class PackageDetailsController : IDisposable
             onChangeVersion: () => OnChangeVersion(_cachedPackageRef),
             onRemove: () => OnRemovePackage(_cachedPackageRef),
             onDeps: () => OnShowPackageDeps(_cachedPackageRef),
-            onMigrate: _onMigratePackage != null ? () => OnMigratePackage(_cachedPackageRef) : null);
+            onMigrate: _onMigratePackage != null ? () => OnMigratePackage(_cachedPackageRef) : null,
+            isLegacyProject: isLegacy,
+            onMigrateProject: isLegacy && _onMigrateProject != null ? () => OnMigrateProject() : null);
         _updateDetailsPanel(controls);
         CaptureTabControl();
     }
@@ -296,6 +305,7 @@ public class PackageDetailsController : IDisposable
             StopLoadingAnimation();
 
             // Rebuild the details view with the fetched data and interactive buttons
+            var isLegacy = _getSelectedProject()?.IsPackagesConfig == true;
             var controls = InteractivePackageDetailsBuilder.BuildInteractiveDetails(
                 package,
                 nugetData,
@@ -304,7 +314,9 @@ public class PackageDetailsController : IDisposable
                 onChangeVersion: () => OnChangeVersion(package),
                 onRemove: () => OnRemovePackage(package),
                 onDeps: () => OnShowPackageDeps(package),
-                onMigrate: _onMigratePackage != null ? () => OnMigratePackage(package) : null);
+                onMigrate: _onMigratePackage != null ? () => OnMigratePackage(package) : null,
+                isLegacyProject: isLegacy,
+                onMigrateProject: isLegacy && _onMigrateProject != null ? () => OnMigrateProject() : null);
             _updateDetailsPanel(controls);
             CaptureTabControl();
         }
@@ -365,6 +377,14 @@ public class PackageDetailsController : IDisposable
         AsyncHelper.FireAndForget(
             () => _onMigratePackage(package),
             ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Migrate Error", "Failed to migrate package.", "NuGet", _window));
+    }
+
+    private void OnMigrateProject()
+    {
+        if (_onMigrateProject == null) return;
+        AsyncHelper.FireAndForget(
+            () => _onMigrateProject(),
+            ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Migration Error", "Failed to migrate project.", "Migration", _window));
     }
 
     public void Dispose()

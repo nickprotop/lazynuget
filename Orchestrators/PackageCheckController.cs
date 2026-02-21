@@ -20,6 +20,7 @@ public class PackageCheckController : IDisposable
     private readonly ErrorHandler? _errorHandler;
     private readonly Func<ViewState> _getCurrentViewState;
     private readonly Func<bool> _isFilterMode;
+    private readonly Func<bool> _isLegacyProject;
     private readonly Action _refreshCurrentView;
     private readonly Func<List<ProjectInfo>> _getProjects;
 
@@ -36,7 +37,8 @@ public class PackageCheckController : IDisposable
         Func<ViewState> getCurrentViewState,
         Func<bool> isFilterMode,
         Action refreshCurrentView,
-        Func<List<ProjectInfo>> getProjects)
+        Func<List<ProjectInfo>> getProjects,
+        Func<bool>? isLegacyProject = null)
     {
         _windowSystem = windowSystem;
         _nugetService = nugetService;
@@ -46,6 +48,7 @@ public class PackageCheckController : IDisposable
         _errorHandler = errorHandler;
         _getCurrentViewState = getCurrentViewState;
         _isFilterMode = isFilterMode;
+        _isLegacyProject = isLegacyProject ?? (() => false);
         _refreshCurrentView = refreshCurrentView;
         _getProjects = getProjects;
     }
@@ -185,6 +188,7 @@ public class PackageCheckController : IDisposable
         // Restore help text after delay — capture view state now, not at restore time
         var trackerSnapshot = _checkProgressTracker;
         var viewStateAtCompletion = _getCurrentViewState();
+        var isLegacyAtCompletion = _isLegacyProject();
         _checkProgressTracker = null;
         AsyncHelper.FireAndForget(async () =>
         {
@@ -194,7 +198,7 @@ public class PackageCheckController : IDisposable
             if (!_isFilterMode() && trackerSnapshot != null && !trackerSnapshot.IsActive
                 && _getCurrentViewState() == viewStateAtCompletion)
             {
-                _statusBarManager?.UpdateHelpBar(viewStateAtCompletion);
+                _statusBarManager?.UpdateHelpBar(viewStateAtCompletion, isLegacyAtCompletion);
                 _window?.Invalidate(true);
             }
         });

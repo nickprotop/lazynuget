@@ -22,7 +22,9 @@ public static class InteractivePackageDetailsBuilder
         Action onChangeVersion,
         Action onRemove,
         Action? onDeps = null,
-        Action? onMigrate = null)
+        Action? onMigrate = null,
+        bool isLegacyProject = false,
+        Action? onMigrateProject = null)
     {
         var controls = new List<IWindowControl>();
 
@@ -33,47 +35,95 @@ public static class InteractivePackageDetailsBuilder
             VersionSource.Override => " [yellow][override][/]",
             _                      => string.Empty
         };
+        var legacyTag = isLegacyProject ? " [grey50][legacy][/]" : string.Empty;
 
         var header = Controls.Markup()
-            .AddLine($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]")
+            .AddLine($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]{legacyTag}")
             .AddLine($"[grey70]Installed: {Markup.Escape(package.Version)}[/]{versionSourceTag}")
             .AddEmptyLine()
             .WithMargin(1, 1, 0, 0)
             .Build();
         controls.Add(header);
 
-        // Status section
-        var status = BuildStatusSection(package);
-        controls.Add(status);
+        if (isLegacyProject)
+        {
+            // Read-only notice + migrate project button instead of action toolbar
+            var separator1 = Controls.Rule("[grey50]Read-Only[/]");
+            separator1.Margin = new Margin(1, 0, 1, 0);
+            controls.Add(separator1);
 
-        // Separator before toolbar
-        var separator1 = Controls.Rule("[grey70]Package Actions[/]");
-        separator1.Margin = new Margin(1, 0, 1, 0);
-        controls.Add(separator1);
+            var toolbarTop = Controls.Markup()
+                .AddEmptyLine()
+                .WithAlignment(HorizontalAlignment.Stretch)
+                .WithBackgroundColor(Color.Grey15)
+                .WithMargin(1, 0, 1, 0)
+                .Build();
+            controls.Add(toolbarTop);
 
-        // Empty markup above toolbar for background extension
-        var toolbarTop = Controls.Markup()
-            .AddEmptyLine()
-            .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(Color.Grey15)
-            .WithMargin(1, 0, 1, 0)
-            .Build();
-        controls.Add(toolbarTop);
+            var migrateBtn = Controls.Button("[yellow]Migrate Project[/] [grey78](Ctrl+M)[/]")
+                .OnClick((s, e) => onMigrateProject?.Invoke())
+                .Enabled(onMigrateProject != null)
+                .WithMargin(1, 0, 0, 0)
+                .WithBackgroundColor(Color.Grey30)
+                .WithForegroundColor(Color.Grey93)
+                .WithFocusedBackgroundColor(Color.Grey50)
+                .WithFocusedForegroundColor(Color.White)
+                .WithDisabledBackgroundColor(Color.Grey23)
+                .WithDisabledForegroundColor(Color.Grey50)
+                .Build();
 
-        // Action toolbar - placed after status, before details
-        var toolbar = BuildActionToolbar(package, nugetData, onUpdate, onChangeVersion, onRemove, onDeps, onMigrate);
-        controls.Add(toolbar);
+            var toolbar = Controls.Toolbar()
+                .AddButton(migrateBtn)
+                .WithSpacing(2)
+                .WithWrap()
+                .WithBackgroundColor(Color.Grey15)
+                .WithMargin(1, 0, 1, 0)
+                .Build();
+            controls.Add(toolbar);
 
-        // Empty markup below toolbar for background extension
-        var toolbarBottom = Controls.Markup()
-            .AddEmptyLine()
-            .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(Color.Grey15)
-            .WithMargin(1, 0, 1, 0)
-            .Build();
-        controls.Add(toolbarBottom);
+            var toolbarBottom = Controls.Markup()
+                .AddLine("[grey50]Package operations unavailable — migrate first.[/]")
+                .WithAlignment(HorizontalAlignment.Stretch)
+                .WithBackgroundColor(Color.Grey15)
+                .WithMargin(1, 0, 1, 0)
+                .Build();
+            controls.Add(toolbarBottom);
+        }
+        else
+        {
+            // Status section
+            var status = BuildStatusSection(package);
+            controls.Add(status);
 
-        // Separator after toolbar
+            // Separator before toolbar
+            var separator1 = Controls.Rule("[grey70]Package Actions[/]");
+            separator1.Margin = new Margin(1, 0, 1, 0);
+            controls.Add(separator1);
+
+            // Empty markup above toolbar for background extension
+            var toolbarTop = Controls.Markup()
+                .AddEmptyLine()
+                .WithAlignment(HorizontalAlignment.Stretch)
+                .WithBackgroundColor(Color.Grey15)
+                .WithMargin(1, 0, 1, 0)
+                .Build();
+            controls.Add(toolbarTop);
+
+            // Action toolbar - placed after status, before details
+            var toolbar = BuildActionToolbar(package, nugetData, onUpdate, onChangeVersion, onRemove, onDeps, onMigrate);
+            controls.Add(toolbar);
+
+            // Empty markup below toolbar for background extension
+            var toolbarBottom = Controls.Markup()
+                .AddEmptyLine()
+                .WithAlignment(HorizontalAlignment.Stretch)
+                .WithBackgroundColor(Color.Grey15)
+                .WithMargin(1, 0, 1, 0)
+                .Build();
+            controls.Add(toolbarBottom);
+        }
+
+        // Separator after toolbar / notice
         var separator2 = Controls.Rule();
         separator2.Margin = new Margin(1, 0, 1, 0);
         controls.Add(separator2);
@@ -542,7 +592,7 @@ public static class InteractivePackageDetailsBuilder
                 .OnClick((s, e) => onMigrate())
                 .WithBackgroundColor(Color.Grey30)
                 .WithForegroundColor(Color.Grey93)
-                .WithFocusedBackgroundColor(Color.DarkOrange)
+                .WithFocusedBackgroundColor(Color.Grey50)
                 .WithFocusedForegroundColor(Color.White)
                 .Build();
             toolbar.AddButton(migrateBtn);
