@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using LazyNuGet.Models;
 using SharpConsoleUI.Logging;
 
@@ -238,6 +239,72 @@ public class DotNetCliService
 
         return trees;
     }
+
+    // ──────────────────────────────────────────────────────────
+    // NuGet Source Management
+    // ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Add a NuGet source to the user-level NuGet.config.
+    /// On Windows, credentials are encrypted with DPAPI.
+    /// On Linux/macOS, --store-password-in-clear-text is used automatically.
+    /// </summary>
+    public async Task<OperationResult> AddSourceAsync(
+        string name, string url, string? username, string? password,
+        CancellationToken ct = default)
+    {
+        _logService?.LogInfo($"Adding NuGet source '{name}' ({url})", "CLI");
+        return await RunDotNetCommandAsync(BuildAddSourceArgs(name, url, username, password), ct);
+    }
+
+    /// <summary>
+    /// Update an existing NuGet source (credentials only — name identifies the source).
+    /// </summary>
+    public async Task<OperationResult> UpdateSourceAsync(
+        string name, string? username, string? password,
+        CancellationToken ct = default)
+    {
+        _logService?.LogInfo($"Updating NuGet source '{name}'", "CLI");
+        return await RunDotNetCommandAsync(BuildUpdateSourceArgs(name, username, password), ct);
+    }
+
+    /// <summary>
+    /// Remove a NuGet source from the user-level NuGet.config.
+    /// </summary>
+    public async Task<OperationResult> RemoveSourceAsync(string name, CancellationToken ct = default)
+    {
+        _logService?.LogInfo($"Removing NuGet source '{name}'", "CLI");
+        return await RunDotNetCommandAsync(BuildRemoveSourceArgs(name), ct);
+    }
+
+    // Internal arg-builders — separated for unit testing without spawning processes.
+
+    internal static string BuildAddSourceArgs(string name, string url, string? username, string? password)
+    {
+        var args = $"nuget add source \"{url}\" -n \"{name}\"";
+        if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
+        {
+            args += $" -u \"{username}\" -p \"{password}\"";
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                args += " --store-password-in-clear-text";
+        }
+        return args;
+    }
+
+    internal static string BuildUpdateSourceArgs(string name, string? username, string? password)
+    {
+        var args = $"nuget update source \"{name}\"";
+        if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
+        {
+            args += $" -u \"{username}\" -p \"{password}\"";
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                args += " --store-password-in-clear-text";
+        }
+        return args;
+    }
+
+    internal static string BuildRemoveSourceArgs(string name)
+        => $"nuget remove source \"{name}\"";
 
     private async Task<OperationResult> RunDotNetCommandAsync(
         string arguments,

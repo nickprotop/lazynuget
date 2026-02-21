@@ -177,5 +177,85 @@ public class ConfigurationServiceTests : IDisposable
         settings.Should().NotBeNull();
     }
 
+    [Fact]
+    public void CustomNuGetSource_ClearTextPassword_NotWrittenWhenNull()
+    {
+        var service = CreateService();
+        var settings = new LazyNuGetSettings();
+        settings.CustomSources.Add(new CustomNuGetSource
+        {
+            Name = "MyFeed",
+            Url = "https://feed.example.com",
+            ClearTextPassword = null  // null → WhenWritingNull → omitted from JSON
+        });
+
+        service.Save(settings);
+
+        var json = File.ReadAllText(Path.Combine(_temp.Path, "settings.json"));
+        json.Should().NotContain("ClearTextPassword");
+    }
+
+    [Fact]
+    public void CustomNuGetSource_ClearTextPassword_ReadFromOldJson()
+    {
+        // Simulate a pre-migration settings.json that still has ClearTextPassword
+        var oldJson = """
+            {
+              "CustomSources": [
+                {
+                  "Name": "OldFeed",
+                  "Url": "https://old.example.com",
+                  "IsEnabled": true,
+                  "RequiresAuth": true,
+                  "Username": "user",
+                  "ClearTextPassword": "secret"
+                }
+              ]
+            }
+            """;
+        _temp.WriteFile("settings.json", oldJson);
+
+        var service = CreateService();
+        var settings = service.Load();
+
+        settings.CustomSources.Should().HaveCount(1);
+        settings.CustomSources[0].ClearTextPassword.Should().Be("secret");
+    }
+
+    [Fact]
+    public void CustomNuGetSource_ClearTextPassword_AfterNullSet_DisappearsFromJson()
+    {
+        // Start with a settings.json containing ClearTextPassword
+        var oldJson = """
+            {
+              "CustomSources": [
+                {
+                  "Name": "MigFeed",
+                  "Url": "https://mig.example.com",
+                  "IsEnabled": true,
+                  "RequiresAuth": true,
+                  "Username": "admin",
+                  "ClearTextPassword": "p@ssw0rd"
+                }
+              ]
+            }
+            """;
+        _temp.WriteFile("settings.json", oldJson);
+
+        var service = CreateService();
+        var settings = service.Load();
+
+        // Simulate migration: null out the password and re-save
+        settings.CustomSources[0].ClearTextPassword = null;
+        service.Save(settings);
+
+        var json = File.ReadAllText(Path.Combine(_temp.Path, "settings.json"));
+        json.Should().NotContain("ClearTextPassword");
+
+        // Reload and verify
+        var reloaded = service.Load();
+        reloaded.CustomSources[0].ClearTextPassword.Should().BeNull();
+    }
+
     public void Dispose() => _temp.Dispose();
 }

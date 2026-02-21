@@ -102,32 +102,38 @@ public class LazyNuGetWindow : IDisposable
     private NuGetCacheService CreateNuGetCacheService()
     {
         var sources = _nugetConfigService?.GetEffectiveSources(_currentFolderPath) ?? new List<NuGetSource>();
-
-        // Merge custom sources from LazyNuGet settings
         var settings = _configService?.Load();
-        if (settings?.CustomSources != null)
-        {
-            foreach (var custom in settings.CustomSources)
-            {
-                // Check for override (enable/disable)
-                var isEnabled = custom.IsEnabled;
-                if (settings.SourceOverrides.TryGetValue(custom.Name, out var overrideEnabled))
-                    isEnabled = overrideEnabled;
 
-                sources.Add(new NuGetSource
-                {
-                    Name = custom.Name,
-                    Url = custom.Url,
-                    IsEnabled = isEnabled,
-                    RequiresAuth = custom.RequiresAuth,
-                    Username = custom.Username,
-                    ClearTextPassword = custom.ClearTextPassword,
-                    Origin = NuGetSourceOrigin.LazyNuGetSettings
-                });
-            }
+        // Mark sources that are tracked in LazyNuGet settings with LazyNuGetSettings origin
+        var customNames = new HashSet<string>(
+            settings?.CustomSources.Select(c => c.Name) ?? [],
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var source in sources)
+            if (customNames.Contains(source.Name))
+                source.Origin = NuGetSourceOrigin.LazyNuGetSettings;
+
+        // Fallback: add custom sources not yet in NuGet.config
+        // (migration still pending, or dotnet CLI unavailable)
+        var existingNames = new HashSet<string>(sources.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (var custom in settings?.CustomSources.Where(c => !existingNames.Contains(c.Name)) ?? [])
+        {
+            var isEnabled = custom.IsEnabled;
+            if (settings!.SourceOverrides.TryGetValue(custom.Name, out var overrideEnabled))
+                isEnabled = overrideEnabled;
+
+            sources.Add(new NuGetSource
+            {
+                Name = custom.Name,
+                Url = custom.Url,
+                IsEnabled = isEnabled,
+                RequiresAuth = custom.RequiresAuth,
+                Username = custom.Username,
+                ClearTextPassword = custom.ClearTextPassword, // migration fallback only
+                Origin = NuGetSourceOrigin.LazyNuGetSettings
+            });
         }
 
-        // Apply source overrides from settings to NuGet.config sources
+        // Apply source overrides from settings to all sources
         if (settings?.SourceOverrides != null)
         {
             foreach (var source in sources)
@@ -138,6 +144,36 @@ public class LazyNuGetWindow : IDisposable
         }
 
         return new NuGetCacheService(_windowSystem.LogService, sources.Count > 0 ? sources : null);
+    }
+
+    /// <summary>
+    /// One-time migration: move ClearTextPassword entries from settings.json into
+    /// the user-level NuGet.config via dotnet CLI. After successful migration the
+    /// password field is nulled (and then WhenWritingNull removes it from JSON).
+    /// </summary>
+    private async Task MigrateCredentialsToNuGetConfigAsync()
+    {
+        if (_configService == null || _cliService == null) return;
+        var settings = _configService.Load();
+        bool dirty = false;
+
+        foreach (var source in settings.CustomSources)
+        {
+            if (string.IsNullOrEmpty(source.ClearTextPassword)) continue;
+
+            var result = await _cliService.AddSourceAsync(
+                source.Name, source.Url, source.Username, source.ClearTextPassword);
+
+            if (result.Success)
+            {
+                source.ClearTextPassword = null; // null → WhenWritingNull → omitted from JSON
+                dirty = true;
+            }
+            // On failure: leave ClearTextPassword in place as runtime fallback.
+        }
+
+        if (dirty)
+            _configService.Save(settings);
     }
 
     public void Show()
@@ -749,6 +785,9 @@ public class LazyNuGetWindow : IDisposable
 
             // Persist the current folder for next launch
             _configService?.TrackFolder(_currentFolderPath);
+
+            // Migrate any plaintext passwords from settings.json into NuGet.config (one-time)
+            await MigrateCredentialsToNuGetConfigAsync();
 
             // Re-resolve NuGet sources for the new project directory
             _nugetService?.Dispose();

@@ -62,7 +62,7 @@ public class ModalManager
         if (_configService == null || _nugetService == null) return false;
 
         var changed = await SettingsModal.ShowAsync(
-            _windowSystem, _configService, _nugetConfigService, _nugetService, _currentFolderPath, _parentWindow);
+            _windowSystem, _configService, _nugetConfigService, _cliService, _nugetService, _currentFolderPath, _parentWindow);
 
         return changed;
     }

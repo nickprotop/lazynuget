@@ -9,6 +9,11 @@ public class CustomNuGetSource
     public bool    IsEnabled         { get; set; } = true;
     public bool    RequiresAuth      { get; set; }
     public string? Username          { get; set; }
+
+    // Retained for backward-compat deserialization and one-time migration only.
+    // Not written to JSON once nulled (WhenWritingNull condition).
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? ClearTextPassword { get; set; }
 }
 

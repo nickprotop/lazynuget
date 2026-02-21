@@ -1,3 +1,6 @@
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 using LazyNuGet.Models;
@@ -230,6 +233,21 @@ public class NuGetConfigService
                         username = value;
                     else if (string.Equals(key, "ClearTextPassword", StringComparison.OrdinalIgnoreCase))
                         password = value;
+                    else if (string.Equals(key, "Password", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                        {
+                            try
+                            {
+                                var bytes = Convert.FromBase64String(value ?? "");
+                                var decrypted = ProtectedData.Unprotect(
+                                    bytes, null, DataProtectionScope.CurrentUser);
+                                password = Encoding.UTF8.GetString(decrypted);
+                            }
+                            catch { /* DPAPI failed — wrong user or corrupt data */ }
+                        }
+                        // On Linux/macOS, DPAPI passwords are unreadable; skip silently.
+                    }
                 }
 
                 if (username != null || password != null)

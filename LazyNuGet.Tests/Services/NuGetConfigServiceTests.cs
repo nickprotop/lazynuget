@@ -298,5 +298,89 @@ public class NuGetConfigServiceTests : IDisposable
         NuGetConfigService.IsValidSourceUrl(url).Should().Be(expected);
     }
 
+    [Fact]
+    public void GetEffectiveSources_PasswordKey_IgnoredOnLinux()
+    {
+        // A <Password> entry with base64 garbage (DPAPI-encrypted on Windows)
+        // On Linux this must be silently ignored — no crash, no password set
+        var config = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key=""PrivateFeed"" value=""https://private.example.com/v3/index.json"" />
+  </packageSources>
+  <packageSourceCredentials>
+    <PrivateFeed>
+      <add key=""Username"" value=""user@example.com"" />
+      <add key=""Password"" value=""AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA..."" />
+    </PrivateFeed>
+  </packageSourceCredentials>
+</configuration>";
+        _temp.WriteFile("nuget.config", config);
+
+        // Must not throw on any platform
+        Action act = () => _service.GetEffectiveSources(_temp.Path);
+        act.Should().NotThrow();
+
+        var sources = _service.GetEffectiveSources(_temp.Path);
+        var feed = sources.FirstOrDefault(s => s.Name == "PrivateFeed");
+        feed.Should().NotBeNull();
+        feed!.Username.Should().Be("user@example.com");
+
+        // On Linux/macOS the DPAPI password is unreadable
+        if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                System.Runtime.InteropServices.OSPlatform.Windows))
+        {
+            feed.ClearTextPassword.Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public void GetEffectiveSources_BothPasswordKeys_ClearTextTakesPrecedence()
+    {
+        // If both ClearTextPassword and Password exist, ClearTextPassword wins
+        // (ClearTextPassword listed last in XML so it overwrites whatever Password set)
+        var config = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key=""DualFeed"" value=""https://dual.example.com/v3/index.json"" />
+  </packageSources>
+  <packageSourceCredentials>
+    <DualFeed>
+      <add key=""Username"" value=""user"" />
+      <add key=""Password"" value=""AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA..."" />
+      <add key=""ClearTextPassword"" value=""clearpass"" />
+    </DualFeed>
+  </packageSourceCredentials>
+</configuration>";
+        _temp.WriteFile("nuget.config", config);
+
+        var sources = _service.GetEffectiveSources(_temp.Path);
+        var feed = sources.FirstOrDefault(s => s.Name == "DualFeed");
+        feed.Should().NotBeNull();
+        // ClearTextPassword comes after Password in the XML, so it wins
+        feed!.ClearTextPassword.Should().Be("clearpass");
+    }
+
+    [Fact]
+    public void GetEffectiveSources_NoCredentials_AuthNotRequired()
+    {
+        var config = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<configuration>
+  <packageSources>
+    <add key=""PublicFeed"" value=""https://api.nuget.org/v3/index.json"" />
+  </packageSources>
+</configuration>";
+        _temp.WriteFile("nuget.config", config);
+
+        var sources = _service.GetEffectiveSources(_temp.Path);
+        var feed = sources.FirstOrDefault(s => s.Name == "PublicFeed");
+        feed.Should().NotBeNull();
+        feed!.RequiresAuth.Should().BeFalse();
+        feed.Username.Should().BeNull();
+        feed.ClearTextPassword.Should().BeNull();
+    }
+
     public void Dispose() => _temp.Dispose();
 }

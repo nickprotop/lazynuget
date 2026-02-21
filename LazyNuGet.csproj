@@ -49,6 +49,7 @@
   <!-- Additional dependencies -->
   <ItemGroup>
     <PackageReference Include="NuGet.Versioning" Version="7.3.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
   </ItemGroup>
 
   <!-- Include files for NuGet package -->

@@ -27,6 +27,7 @@ public class SettingsModal : ModalBase<bool>
     // Dependencies
     private readonly ConfigurationService _configService;
     private readonly NuGetConfigService _nugetConfigService;
+    private readonly DotNetCliService _cliService;
     private readonly NuGetClientService _nugetClientService;
     private readonly string _projectDirectory;
 
@@ -39,12 +40,14 @@ public class SettingsModal : ModalBase<bool>
     private ButtonControl? _sourcesTab;
     private ButtonControl? _generalTab;
     private ButtonControl? _addBtn;
+    private ButtonControl? _editBtn;
     private ButtonControl? _toggleBtn;
     private ButtonControl? _deleteBtn;
     private ButtonControl? _clearBtn;
 
     // Event handlers for cleanup
     private EventHandler<ButtonControl>? _addClickHandler;
+    private EventHandler<ButtonControl>? _editClickHandler;
     private EventHandler<ButtonControl>? _toggleClickHandler;
     private EventHandler<ButtonControl>? _deleteClickHandler;
     private EventHandler<ButtonControl>? _clearClickHandler;
@@ -55,11 +58,13 @@ public class SettingsModal : ModalBase<bool>
     private SettingsModal(
         ConfigurationService configService,
         NuGetConfigService nugetConfigService,
+        DotNetCliService cliService,
         NuGetClientService nugetClientService,
         string projectDirectory)
     {
         _configService = configService;
         _nugetConfigService = nugetConfigService;
+        _cliService = cliService;
         _nugetClientService = nugetClientService;
         _projectDirectory = projectDirectory;
     }
@@ -68,11 +73,12 @@ public class SettingsModal : ModalBase<bool>
         ConsoleWindowSystem windowSystem,
         ConfigurationService configService,
         NuGetConfigService nugetConfigService,
+        DotNetCliService cliService,
         NuGetClientService nugetClientService,
         string projectDirectory,
         Window? parentWindow = null)
     {
-        var instance = new SettingsModal(configService, nugetConfigService, nugetClientService, projectDirectory);
+        var instance = new SettingsModal(configService, nugetConfigService, cliService, nugetClientService, projectDirectory);
         return ((ModalBase<bool>)instance).ShowAsync(windowSystem, parentWindow);
     }
 
@@ -111,6 +117,7 @@ public class SettingsModal : ModalBase<bool>
     {
         var isSources = _currentSection == Section.Sources;
         if (_addBtn != null) _addBtn.Visible = isSources;
+        if (_editBtn != null) _editBtn.Visible = isSources;
         if (_toggleBtn != null) _toggleBtn.Visible = isSources;
         if (_deleteBtn != null) _deleteBtn.Visible = isSources;
         if (_clearBtn != null) _clearBtn.Visible = !isSources;
@@ -297,7 +304,15 @@ public class SettingsModal : ModalBase<bool>
             .WithFocusedForegroundColor(Color.White)
             .Build();
 
-        _toggleBtn = Controls.Button($"[cyan1]Toggle[/] [grey78](E)[/]")
+        _editBtn = Controls.Button($"[cyan1]Edit[/] [grey78](E)[/]")
+            .WithMargin(1, 0, 0, 0)
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.Grey50)
+            .WithFocusedForegroundColor(Color.White)
+            .Build();
+
+        _toggleBtn = Controls.Button($"[cyan1]Toggle[/] [grey78](T)[/]")
             .WithMargin(1, 0, 0, 0)
             .WithBackgroundColor(Color.Grey30)
             .WithForegroundColor(Color.Grey93)
@@ -330,6 +345,7 @@ public class SettingsModal : ModalBase<bool>
 
         var actionToolbar = Controls.Toolbar()
             .AddButton(_addBtn)
+            .AddButton(_editBtn)
             .AddButton(_toggleBtn)
             .AddButton(_deleteBtn)
             .AddButton(_clearBtn)
@@ -396,15 +412,17 @@ public class SettingsModal : ModalBase<bool>
         Modal.AddControl(buttonGrid);
 
         // ── Action handlers ──────────────────────────────────
-        _addClickHandler = (s, e) => _ = HandleAddSource();
+        _addClickHandler    = (s, e) => _ = HandleAddSource();
+        _editClickHandler   = (s, e) => _ = HandleEditSource();
         _toggleClickHandler = (s, e) => HandleToggleSource();
         _deleteClickHandler = (s, e) => _ = HandleDeleteSource();
-        _clearClickHandler = (s, e) => _ = HandleClearRecent();
+        _clearClickHandler  = (s, e) => _ = HandleClearRecent();
 
-        _addBtn.Click += _addClickHandler;
+        _addBtn.Click    += _addClickHandler;
+        _editBtn.Click   += _editClickHandler;
         _toggleBtn.Click += _toggleClickHandler;
         _deleteBtn.Click += _deleteClickHandler;
-        _clearBtn.Click += _clearClickHandler;
+        _clearBtn.Click  += _clearClickHandler;
 
         // Initial setup
         UpdateActionButtons();
@@ -412,19 +430,130 @@ public class SettingsModal : ModalBase<bool>
     }
 
     // Action handlers
+
     private async Task HandleAddSource()
     {
         if (WindowSystem == null || Modal == null) return;
 
         var newSource = await AddSourceModal.ShowAsync(WindowSystem, Modal);
-        if (newSource != null)
+        if (newSource == null) return;
+
+        if (newSource.RequiresAuth && !string.IsNullOrEmpty(newSource.ClearTextPassword))
         {
-            var settings = _configService.Load();
-            settings.CustomSources.Add(newSource);
-            _configService.Save(settings);
-            _settingsChanged = true;
-            RefreshContent();
+            var result = await _cliService.AddSourceAsync(
+                newSource.Name, newSource.Url, newSource.Username, newSource.ClearTextPassword);
+            if (!result.Success)
+            {
+                WindowSystem.NotificationStateService.ShowNotification(
+                    "Source Warning",
+                    $"Could not register credentials with dotnet CLI: {result.Message}",
+                    NotificationSeverity.Warning,
+                    timeout: 4000,
+                    parentWindow: Modal);
+            }
         }
+
+        var settings = _configService.Load();
+        // Remove any existing entry with the same name before adding (idempotent)
+        settings.CustomSources.RemoveAll(cs =>
+            string.Equals(cs.Name, newSource.Name, StringComparison.OrdinalIgnoreCase));
+        settings.CustomSources.Add(new CustomNuGetSource
+        {
+            Name = newSource.Name,
+            Url = newSource.Url,
+            IsEnabled = true,
+            RequiresAuth = newSource.RequiresAuth,
+            Username = newSource.Username
+            // No ClearTextPassword — credentials live in NuGet.config
+        });
+        _configService.Save(settings);
+        _settingsChanged = true;
+        RefreshContent();
+    }
+
+    private async Task HandleEditSource()
+    {
+        if (WindowSystem == null || Modal == null) return;
+
+        var selected = _contentList?.SelectedItem?.Tag;
+        string? sourceName = null;
+
+        if (selected is NuGetSource nugetSource && nugetSource.Origin == NuGetSourceOrigin.LazyNuGetSettings)
+            sourceName = nugetSource.Name;
+        else if (selected is CustomNuGetSource)
+            sourceName = ((CustomNuGetSource)selected).Name;
+        else
+        {
+            WindowSystem.NotificationStateService.ShowNotification(
+                "Cannot Edit",
+                "Only custom (LazyNuGet-managed) sources can be edited here.",
+                NotificationSeverity.Warning,
+                timeout: 3000,
+                parentWindow: Modal);
+            return;
+        }
+
+        // Load existing tracking entry for pre-filling
+        var settings = _configService.Load();
+        var existingCustom = settings.CustomSources.FirstOrDefault(cs =>
+            string.Equals(cs.Name, sourceName, StringComparison.OrdinalIgnoreCase));
+
+        if (existingCustom == null)
+        {
+            // Build from NuGetSource if tracking entry missing
+            if (selected is NuGetSource ns)
+                existingCustom = new CustomNuGetSource
+                {
+                    Name = ns.Name, Url = ns.Url,
+                    Username = ns.Username, RequiresAuth = ns.RequiresAuth
+                };
+            else
+                return;
+        }
+
+        var updated = await AddSourceModal.ShowEditAsync(WindowSystem, existingCustom, Modal);
+        if (updated == null) return;
+
+        // Update credentials in NuGet.config if a new password was provided
+        if (!string.IsNullOrEmpty(updated.ClearTextPassword))
+        {
+            var result = await _cliService.UpdateSourceAsync(
+                existingCustom.Name, updated.Username, updated.ClearTextPassword);
+            if (!result.Success)
+            {
+                WindowSystem.NotificationStateService.ShowNotification(
+                    "Update Warning",
+                    $"Could not update credentials in dotnet CLI: {result.Message}",
+                    NotificationSeverity.Warning,
+                    timeout: 4000,
+                    parentWindow: Modal);
+            }
+        }
+
+        // Update tracking entry in settings.json (never stores password)
+        settings = _configService.Load();
+        var existing = settings.CustomSources.FirstOrDefault(cs =>
+            string.Equals(cs.Name, existingCustom.Name, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+        {
+            existing.Url = updated.Url;
+            existing.Username = updated.Username;
+            existing.RequiresAuth = updated.RequiresAuth;
+        }
+        else
+        {
+            settings.CustomSources.Add(new CustomNuGetSource
+            {
+                Name = updated.Name,
+                Url = updated.Url,
+                IsEnabled = existingCustom.IsEnabled,
+                RequiresAuth = updated.RequiresAuth,
+                Username = updated.Username
+            });
+        }
+        _configService.Save(settings);
+        _settingsChanged = true;
+        RefreshContent();
     }
 
     private void HandleToggleSource()
@@ -491,6 +620,9 @@ public class SettingsModal : ModalBase<bool>
 
         if (confirm)
         {
+            // Best-effort: remove from NuGet.config via CLI (don't block on failure)
+            _ = _cliService.RemoveSourceAsync(nameToDelete);
+
             var settings = _configService.Load();
             settings.CustomSources.RemoveAll(cs =>
                 string.Equals(cs.Name, nameToDelete, StringComparison.OrdinalIgnoreCase));
@@ -538,6 +670,11 @@ public class SettingsModal : ModalBase<bool>
         }
         else if (e.KeyInfo.Key == ConsoleKey.E && _currentSection == Section.Sources)
         {
+            _ = HandleEditSource();
+            e.Handled = true;
+        }
+        else if (e.KeyInfo.Key == ConsoleKey.T && _currentSection == Section.Sources)
+        {
             HandleToggleSource();
             e.Handled = true;
         }
@@ -562,6 +699,9 @@ public class SettingsModal : ModalBase<bool>
         // Unsubscribe event handlers
         if (_addBtn != null && _addClickHandler != null)
             _addBtn.Click -= _addClickHandler;
+
+        if (_editBtn != null && _editClickHandler != null)
+            _editBtn.Click -= _editClickHandler;
 
         if (_toggleBtn != null && _toggleClickHandler != null)
             _toggleBtn.Click -= _toggleClickHandler;
