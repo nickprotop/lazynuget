@@ -77,6 +77,13 @@ public class PackageFilterController
             UpdateFilterDisplay();
         }
 
+        if (_leftPanelHeader != null)
+        {
+            _leftPanelHeader.SetContent(new List<string> {
+                $"[yellow]FILTER[/] [grey70]Packages ({_allInstalledPackages.Count})[/]"
+            });
+        }
+
         if (_bottomHelpBar != null)
         {
             _bottomHelpBar.SetContent(new List<string> {
@@ -157,8 +164,8 @@ public class PackageFilterController
         if (_leftPanelHeader != null)
         {
             var headerText = string.IsNullOrWhiteSpace(query)
-                ? $"[grey70]Packages ({_allInstalledPackages.Count})[/]"
-                : $"[grey70]Packages ({filtered.Count} of {_allInstalledPackages.Count})[/]";
+                ? $"[yellow]FILTER[/] [grey70]Packages ({_allInstalledPackages.Count})[/]"
+                : $"[yellow]FILTER[/] [grey70]Packages ({filtered.Count} of {_allInstalledPackages.Count})[/]";
             _leftPanelHeader.SetContent(new List<string> { headerText });
         }
 

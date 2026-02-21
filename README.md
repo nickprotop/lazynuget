@@ -214,6 +214,34 @@ lazynuget --help
 
 LazyNuGet will scan the directory for .csproj files and display all discovered projects and their packages.
 
+## Troubleshooting
+
+### Projects not found
+LazyNuGet scans for `.csproj` files. Make sure you open the folder that contains your projects (or a parent folder). Folders named `bin`, `obj`, `.git`, and `node_modules` are skipped automatically.
+
+### Packages show as up-to-date but shouldn't be
+LazyNuGet caches package metadata during a session. Press `Ctrl+R` to force a full reload and clear the cache. Also confirm you have network access to NuGet.org.
+
+### Outdated/vulnerable badges not appearing
+Version checks run in the background after projects load. If the badge never appears, check that NuGet.org is reachable. A red indicator in the status bar usually means a source failed to connect.
+
+### Private feed not showing packages
+1. Confirm the feed URL is correct — open `Ctrl+P` → **Sources** tab and verify it is enabled.
+2. If the feed requires authentication, make sure credentials are saved (edit the source and re-enter them).
+3. On Linux/macOS credentials are stored as clear-text in `~/.nuget/NuGet/NuGet.Config`. On Windows they are encrypted with DPAPI.
+4. If the feed was added outside LazyNuGet (e.g. via `dotnet nuget add source`), it will appear automatically — LazyNuGet reads the standard NuGet.config hierarchy.
+
+### Authentication errors on a private feed
+Re-enter credentials via `Ctrl+P` → select the source → press `E` to edit. If the feed uses a PAT (Personal Access Token), put the token in the **Password** field (username can be anything, e.g. `pat`).
+
+### Terminal display looks broken (missing borders, garbled text)
+LazyNuGet requires a terminal with **Unicode** and **256-colour** support. Recommended terminals: Windows Terminal, iTerm2, GNOME Terminal, Alacritty, Kitty. The basic Windows `cmd.exe` console is not supported — use Windows Terminal instead.
+
+### macOS: "cannot be opened because the developer cannot be verified"
+Run: `xattr -d com.apple.quarantine $(which lazynuget)`
+
+---
+
 ## Uninstall
 
 ### Linux / macOS

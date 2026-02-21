@@ -26,6 +26,8 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
         PreReleaseOnly
     }
 
+    private const int SearchResultLimit = 20;
+
     // Dependencies
     private readonly NuGetClientService _nugetService;
 
@@ -261,7 +263,7 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
                 await Task.Delay(400, ct);
                 if (ct.IsCancellationRequested) return;
 
-                var results = await _nugetService.SearchPackagesAsync(query, 15, ct);
+                var results = await _nugetService.SearchPackagesAsync(query, SearchResultLimit, ct);
                 if (ct.IsCancellationRequested) return;
 
                 _allResults = results;
@@ -467,10 +469,15 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
             _ => "All Versions"
         };
 
+        var cappedNote = _allResults.Count >= SearchResultLimit
+            ? $" [{ColorScheme.MutedMarkup}]· top {SearchResultLimit} shown — refine query for more[/]"
+            : string.Empty;
+
         _statusLabel?.SetContent(new List<string> {
             $"[{ColorScheme.SecondaryMarkup}]Showing:[/] [{ColorScheme.PrimaryMarkup}]{filterText}[/] " +
             $"[{ColorScheme.MutedMarkup}]({_currentResults.Count} packages - " +
-            $"{verifiedCount} verified, {deprecatedCount} deprecated, {vulnerableCount} vulnerable)[/]"
+            $"{verifiedCount} verified, {deprecatedCount} deprecated, {vulnerableCount} vulnerable)[/]" +
+            cappedNote
         });
     }
 
