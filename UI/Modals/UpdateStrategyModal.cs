@@ -126,7 +126,7 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
             .WithColor(ColorScheme.RuleColor)
             .StickyBottom()
             .Build();
-        separator2.Margin = new Margin(2, 1, 2, 0);
+        separator2.Margin = new Margin(2, 0, 2, 0);
 
         // ── Action buttons ────────────────────────────────────
         _continueButton = Controls.Button("[grey93]Continue (Enter)[/]")
@@ -157,9 +157,15 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
         buttonToolbar.Margin = new Margin(0, 0, 0, 0);
 
         // ── Help label ────────────────────────────────────────
+        var separator3 = Controls.RuleBuilder()
+            .WithColor(ColorScheme.RuleColor)
+            .StickyBottom()
+            .Build();
+        separator3.Margin = new Margin(2, 0, 2, 0);
+
         var helpLabel = Controls.Markup()
             .AddLine($"[{ColorScheme.MutedMarkup}]F1-F3:Quick Select  PgUp/PgDn:Scroll  Enter:Continue  Esc:Cancel[/]")
-            .WithMargin(2, 1, 2, 0)
+            .WithMargin(2, 0, 2, 0)
             .StickyBottom()
             .Build();
 
@@ -170,8 +176,9 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
         Modal.AddControl(_descriptionLabel);
         Modal.AddControl(_packageScrollPanel);
         Modal.AddControl(separator2);
-        Modal.AddControl(helpLabel);
         Modal.AddControl(buttonToolbar);
+        Modal.AddControl(separator3);
+        Modal.AddControl(helpLabel);
     }
 
     protected override void SetInitialFocus()
