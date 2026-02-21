@@ -9,6 +9,50 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
+        // Handle --help / -h
+        if (args.Any(a => a == "--help" || a == "-h"))
+        {
+            Console.WriteLine("Usage: lazynuget [path]");
+            Console.WriteLine("       lazynuget --migrate [path]");
+            Console.WriteLine();
+            Console.WriteLine("  path       Folder to open (default: current directory)");
+            Console.WriteLine("  --migrate  Migrate packages.config projects to PackageReference");
+            Console.WriteLine("  --help     Show this help message");
+            return 0;
+        }
+
+        // Handle --migrate (headless, no UI)
+        if (args.Length > 0 && args[0] == "--migrate")
+        {
+            string targetPath = args.Length > 1
+                ? Path.GetFullPath(args[1])
+                : Environment.CurrentDirectory;
+
+            if (!Directory.Exists(targetPath))
+            {
+                Console.Error.WriteLine($"Error: Directory '{targetPath}' does not exist.");
+                return 1;
+            }
+
+            var migrationService = new PackagesConfigMigrationService();
+            var results = await migrationService.MigrateAllInFolderAsync(
+                targetPath,
+                progress: new Progress<string>(Console.WriteLine));
+
+            foreach (var r in results)
+            {
+                if (r.Success)
+                    Console.WriteLine($"  ✓ {Path.GetFileName(r.ProjectPath)} — {r.PackagesMigrated} package(s) migrated");
+                else
+                    Console.WriteLine($"  ✗ {Path.GetFileName(r.ProjectPath)} — {r.Error}");
+            }
+
+            if (!results.Any())
+                Console.WriteLine("No packages.config projects found.");
+
+            return results.All(r => r.Success) ? 0 : 1;
+        }
+
         var configService = new ConfigurationService();
         var settings = configService.Load();
 

@@ -88,6 +88,7 @@ LazyNuGet is fully usable with both keyboard and mouse. Click to focus controls,
 | `Ctrl+U` | Update package / Update all |
 | `Ctrl+V` | Change package version |
 | `Ctrl+X` | Remove package |
+| `Ctrl+M` | Migrate legacy `packages.config` project to `PackageReference` |
 | `Ctrl+L` | Open log viewer |
 | `Ctrl+↑/↓` | Scroll details panel |
 | `Esc` | Go back / Close dialogs |
@@ -212,6 +213,9 @@ lazynuget
 # Manage packages in specific directory
 lazynuget /path/to/your/projects
 
+# Migrate all packages.config projects in a directory tree (headless, no UI)
+lazynuget --migrate /path/to/your/projects
+
 # Show help
 lazynuget --help
 ```
@@ -237,6 +241,17 @@ Version checks run in the background after projects load. If the badge never app
 
 ### Authentication errors on a private feed
 Re-enter credentials via `Ctrl+P` → select the source → press `E` to edit. If the feed uses a PAT (Personal Access Token), put the token in the **Password** field (username can be anything, e.g. `pat`).
+
+### Project shows zero packages (legacy packages.config project)
+
+LazyNuGet reads `<PackageReference>` elements by default. Older .NET Framework projects use a separate `packages.config` file instead, which is also supported — they appear in the project list with a **legacy** badge and their packages are shown read-only.
+
+To manage these projects fully, migrate them to the modern `PackageReference` format:
+
+- **In-app:** navigate into the project's packages view and press `Ctrl+M`. LazyNuGet will confirm, create a `.csproj.bak` backup, convert all `packages.config` entries to `<PackageReference>` elements, remove old NuGet `<Reference>` hint-paths, and delete `packages.config`. After migration the project reloads as a normal project.
+- **Headless (batch):** run `lazynuget --migrate /path/to/solution` to migrate every `packages.config` project in the tree at once. Results are printed to stdout and a `.csproj.bak` backup is created next to each migrated file. If a migration fails for any reason the original `.csproj` is restored from the backup automatically.
+
+Framework assembly references (`System`, `System.Core`, etc.) are never touched — only NuGet hint-path references are removed.
 
 ### Terminal display looks broken (missing borders, garbled text)
 LazyNuGet requires a terminal with **Unicode** and **256-colour** support. Recommended terminals: Windows Terminal, iTerm2, GNOME Terminal, Alacritty, Kitty. The basic Windows `cmd.exe` console is not supported — use Windows Terminal instead.

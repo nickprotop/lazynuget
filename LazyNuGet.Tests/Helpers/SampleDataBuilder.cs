@@ -150,6 +150,57 @@ public static class SampleDataBuilder
     }
 
     /// <summary>
+    /// Create a packages.config XML file with the given packages.
+    /// </summary>
+    public static string CreatePackagesConfig(
+        params (string id, string version, string targetFramework)[] packages)
+    {
+        var entries = packages.Length == 0
+            ? string.Empty
+            : string.Join("\n  ", packages.Select(p =>
+                $"<package id=\"{p.id}\" version=\"{p.version}\" targetFramework=\"{p.targetFramework}\" />"));
+
+        return $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<packages>
+  {entries}
+</packages>";
+    }
+
+    /// <summary>
+    /// Create an old-style .csproj that uses packages.config (legacy .NET Framework format).
+    /// Includes:
+    ///  - NuGet hint-path <Reference> elements for each package (will be migrated)
+    ///  - Framework <Reference> elements without HintPath (must be preserved after migration)
+    ///  - A NuGet MSBuild import (will be removed on migration)
+    /// </summary>
+    public static string CreateLegacyCsproj(
+        params (string id, string version)[] nugetPackages)
+    {
+        var nugetRefs = string.Join("\n    ", nugetPackages.Select(p =>
+            $"<Reference Include=\"{p.id}\">\n" +
+            $"      <HintPath>..\\packages\\{p.id}.{p.version}\\lib\\net45\\{p.id}.dll</HintPath>\n" +
+            $"    </Reference>"));
+
+        var frameworkRefs = @"<Reference Include=""System"" />
+    <Reference Include=""System.Core"" />
+    <Reference Include=""System.Xml"" />";
+
+        return $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<Project ToolsVersion=""15.0"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">
+  <Import Project=""$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.CSharp.targets"" />
+  <Import Project=""..\packages\NuGet.Build.Tasks.Pack.0.0.1\build\NuGet.Build.Tasks.Pack.targets"" Condition=""Exists('..\packages\NuGet.Build.Tasks.Pack.0.0.1\build\NuGet.Build.Tasks.Pack.targets')"" />
+  <PropertyGroup>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <AssemblyName>LegacyProject</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    {frameworkRefs}
+    {nugetRefs}
+  </ItemGroup>
+</Project>";
+    }
+
+    /// <summary>
     /// Create a minimal .sln file referencing the given projects.
     /// </summary>
     public static string CreateSolutionFile(params (string name, string relativePath)[] projects)

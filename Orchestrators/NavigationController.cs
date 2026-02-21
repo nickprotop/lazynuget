@@ -29,6 +29,7 @@ public class NavigationController
     private readonly Func<ProjectInfo, PackageReference?, Task> _showDependencyTreeAsync;
     private readonly Func<Task> _confirmExitAsync;
     private readonly OperationOrchestrator? _operationOrchestrator;
+    private readonly Func<ProjectInfo, Task>? _handleMigrateProjectAsync;
 
     private ViewState _currentViewState = ViewState.Projects;
     private ProjectInfo? _selectedProject;
@@ -55,7 +56,8 @@ public class NavigationController
         Func<ProjectInfo, Task> handleRestoreAsync,
         Func<ProjectInfo, PackageReference?, Task> showDependencyTreeAsync,
         Func<Task> confirmExitAsync,
-        OperationOrchestrator? operationOrchestrator = null)
+        OperationOrchestrator? operationOrchestrator = null,
+        Func<ProjectInfo, Task>? handleMigrateProjectAsync = null)
     {
         _contextList = contextList;
         _leftPanelHeader = leftPanelHeader;
@@ -72,6 +74,7 @@ public class NavigationController
         _showDependencyTreeAsync = showDependencyTreeAsync;
         _confirmExitAsync = confirmExitAsync;
         _operationOrchestrator = operationOrchestrator;
+        _handleMigrateProjectAsync = handleMigrateProjectAsync;
     }
 
     public void SwitchToProjectsView()
@@ -191,8 +194,8 @@ public class NavigationController
         // Update left panel header
         UpdateLeftPanelHeader($"Packages ({allPackages.Count})");
 
-        // Update help bar via StatusBarManager
-        _statusBarManager?.UpdateHelpBar(_currentViewState);
+        // Update help bar via StatusBarManager (show migration hint for legacy projects)
+        _statusBarManager?.UpdateHelpBar(_currentViewState, project.IsPackagesConfig);
 
         // Determine which index to select
         int indexToSelect = 0;
@@ -280,10 +283,13 @@ public class NavigationController
                 var tfDisplay = project.TargetFrameworks.Any()
                     ? string.Join(" | ", project.TargetFrameworks)
                     : project.TargetFramework;
-                var displayText = $"[cyan1]{Markup.Escape(project.Name)}[/]\n" +
+                var legacyBadge = project.IsPackagesConfig ? "[grey50]legacy[/] " : string.Empty;
+                var displayText = $"{legacyBadge}[cyan1]{Markup.Escape(project.Name)}[/]\n" +
                                 $"[grey70]  📦 {project.Packages.Count} packages · {Markup.Escape(tfDisplay)}[/]";
 
-                if (project.OutdatedCount > 0)
+                if (project.IsPackagesConfig)
+                    displayText += $"\n[grey50]  packages.config — press Ctrl+M to migrate[/]";
+                else if (project.OutdatedCount > 0)
                     displayText += $"\n[yellow]  ⚠ {project.OutdatedCount} outdated[/]";
                 else
                     displayText += $"\n[green]  ✓ All up-to-date[/]";
@@ -321,6 +327,19 @@ public class NavigationController
             case ViewState.Packages:
                 // Enter on a package -> already showing details on selection change; nothing extra needed
                 break;
+        }
+    }
+
+    public void HandleMigrateProjectKey()
+    {
+        if (_currentViewState != ViewState.Packages || _selectedProject == null) return;
+        if (!_selectedProject.IsPackagesConfig) return;
+
+        if (_handleMigrateProjectAsync != null)
+        {
+            AsyncHelper.FireAndForget(
+                () => _handleMigrateProjectAsync(_selectedProject),
+                ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Migration Error", "Failed to migrate project.", "Migration", _window));
         }
     }
 

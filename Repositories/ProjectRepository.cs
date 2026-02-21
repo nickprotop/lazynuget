@@ -39,6 +39,18 @@ public class ProjectRepository
             projectData.TargetFrameworks = frameworks;
             projectData.TargetFramework  = frameworks.FirstOrDefault() ?? "unknown";
 
+            // Detect packages.config (legacy .NET Framework projects)
+            var projectDir         = Path.GetDirectoryName(projectFilePath)!;
+            var packagesConfigPath = Path.Combine(projectDir, "packages.config");
+
+            if (File.Exists(packagesConfigPath))
+            {
+                projectData.IsPackagesConfig   = true;
+                projectData.PackagesConfigPath = packagesConfigPath;
+                projectData.PackageReferences  = ParsePackagesConfig(packagesConfigPath);
+                return projectData;
+            }
+
             // Detect Central Package Management
             bool isCpm = doc.Descendants("ManagePackageVersionsCentrally")
                 .Any(e => e.Value.Equals("true", StringComparison.OrdinalIgnoreCase));
@@ -145,6 +157,36 @@ public class ProjectRepository
     }
 
     /// <summary>
+    /// Parse a packages.config file and return a list of package references.
+    /// Returns an empty list on malformed XML.
+    /// </summary>
+    private static List<PackageReferenceData> ParsePackagesConfig(string path)
+    {
+        try
+        {
+            var doc = XDocument.Load(path);
+            return doc.Descendants("package")
+                .Select(pkg => new
+                {
+                    Id      = pkg.Attribute("id")?.Value,
+                    Version = pkg.Attribute("version")?.Value
+                })
+                .Where(p => !string.IsNullOrEmpty(p.Id) && !string.IsNullOrEmpty(p.Version))
+                .Select(p => new PackageReferenceData
+                {
+                    Id            = p.Id!,
+                    Version       = p.Version!,
+                    VersionSource = VersionSource.Inline
+                })
+                .ToList();
+        }
+        catch
+        {
+            return new List<PackageReferenceData>();
+        }
+    }
+
+    /// <summary>
     /// Check if a file exists
     /// </summary>
     public bool ProjectFileExists(string filePath)
@@ -174,6 +216,8 @@ public class ProjectFileData
     public List<PackageReferenceData> PackageReferences { get; set; } = new();
     public bool IsCpmEnabled { get; set; }
     public string? PropsFilePath { get; set; }
+    public bool IsPackagesConfig { get; set; }
+    public string? PackagesConfigPath { get; set; }
 }
 
 /// <summary>

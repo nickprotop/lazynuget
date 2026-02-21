@@ -421,7 +421,8 @@ public class LazyNuGetWindow : IDisposable
             proj => HandleRestoreAsync(proj),
             (proj, pkg) => ShowDependencyTreeAsync(proj, pkg),
             () => ConfirmExitAsync(),
-            _operationOrchestrator);
+            _operationOrchestrator,
+            proj => HandleMigrateProjectAsync(proj));
     }
 
     private async Task RefreshThreadAsync(Window window, CancellationToken ct)
@@ -593,9 +594,38 @@ public class LazyNuGetWindow : IDisposable
                     ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "History Error", "Failed to show history.", "UI", _window));
                 e.Handled = true;
             }
+            // Ctrl+M - Migrate packages.config project to PackageReference
+            else if (e.KeyInfo.Key == ConsoleKey.M && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                if (_navigationController?.CurrentViewState == ViewState.Packages
+                    && _navigationController?.SelectedProject?.IsPackagesConfig == true)
+                {
+                    _navigationController?.HandleMigrateProjectKey();
+                }
+                else if (_navigationController?.CurrentViewState == ViewState.Packages
+                    && _navigationController?.SelectedProject != null)
+                {
+                    _windowSystem.NotificationStateService.ShowNotification(
+                        "Not a Legacy Project",
+                        "This project already uses PackageReference.",
+                        NotificationSeverity.Info, timeout: 3000,
+                        parentWindow: _window);
+                }
+                e.Handled = true;
+            }
             // Ctrl+U - Update package (in packages view) or update all (in projects view)
             else if (e.KeyInfo.Key == ConsoleKey.U && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
+                if (_navigationController?.CurrentViewState == ViewState.Packages
+                    && _navigationController?.SelectedProject?.IsPackagesConfig == true)
+                {
+                    _windowSystem.NotificationStateService.ShowNotification(
+                        "Legacy Project",
+                        "This project uses packages.config. Press Ctrl+M to migrate to PackageReference first.",
+                        NotificationSeverity.Info, timeout: 4000, parentWindow: _window);
+                    e.Handled = true;
+                    return;
+                }
                 if (_navigationController?.CurrentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkg)
                 {
                     AsyncHelper.FireAndForget(
@@ -613,6 +643,16 @@ public class LazyNuGetWindow : IDisposable
             // Ctrl+V - Change package version
             else if (e.KeyInfo.Key == ConsoleKey.V && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
+                if (_navigationController?.CurrentViewState == ViewState.Packages
+                    && _navigationController?.SelectedProject?.IsPackagesConfig == true)
+                {
+                    _windowSystem.NotificationStateService.ShowNotification(
+                        "Legacy Project",
+                        "This project uses packages.config. Press Ctrl+M to migrate to PackageReference first.",
+                        NotificationSeverity.Info, timeout: 4000, parentWindow: _window);
+                    e.Handled = true;
+                    return;
+                }
                 if (_navigationController?.CurrentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkgToChange)
                 {
                     AsyncHelper.FireAndForget(
@@ -624,6 +664,16 @@ public class LazyNuGetWindow : IDisposable
             // Ctrl+X - Remove package
             else if (e.KeyInfo.Key == ConsoleKey.X && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
             {
+                if (_navigationController?.CurrentViewState == ViewState.Packages
+                    && _navigationController?.SelectedProject?.IsPackagesConfig == true)
+                {
+                    _windowSystem.NotificationStateService.ShowNotification(
+                        "Legacy Project",
+                        "This project uses packages.config. Press Ctrl+M to migrate to PackageReference first.",
+                        NotificationSeverity.Info, timeout: 4000, parentWindow: _window);
+                    e.Handled = true;
+                    return;
+                }
                 if (_navigationController?.CurrentViewState == ViewState.Packages && _contextList?.SelectedItem?.Tag is PackageReference pkgToRemove)
                 {
                     AsyncHelper.FireAndForget(
@@ -1016,6 +1066,58 @@ public class LazyNuGetWindow : IDisposable
         }
     }
 
+    private async Task HandleMigrateProjectAsync(ProjectInfo project)
+    {
+        if (!project.IsPackagesConfig) return;
+
+        var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
+            "Migrate Project",
+            $"Migrate {project.Name} from packages.config to PackageReference?\n\nA .csproj.bak backup will be created before any changes.",
+            parentWindow: _window);
+        if (!confirm) return;
+
+        var migrationService = new LazyNuGet.Services.PackagesConfigMigrationService();
+
+        var result = await LazyNuGet.UI.Modals.OperationProgressModal.ShowAsync(
+            _windowSystem,
+            Models.OperationType.Add,
+            async (ct, progress) =>
+            {
+                progress.Report($"Migrating {project.Name}...");
+                var migrationResult = await migrationService.MigrateProjectAsync(project.FilePath, ct);
+                if (migrationResult.Success)
+                {
+                    progress.Report($"Migrated {migrationResult.PackagesMigrated} package(s) to PackageReference");
+                    return new OperationResult { Success = true, Message = $"Migrated {migrationResult.PackagesMigrated} package(s)" };
+                }
+                return new OperationResult { Success = false, Message = migrationResult.Error };
+            },
+            "Migrating Project",
+            $"Converting {project.Name} from packages.config to PackageReference",
+            _historyService!,
+            project.FilePath,
+            project.Name,
+            null,
+            null,
+            _window);
+
+        if (result.Success)
+        {
+            _windowSystem.NotificationStateService.ShowNotification(
+                "Migration Complete",
+                $"{project.Name} has been migrated to PackageReference",
+                NotificationSeverity.Success, timeout: 4000, parentWindow: _window);
+            await ReloadProjectAndRefreshView(project);
+        }
+        else
+        {
+            _windowSystem.NotificationStateService.ShowNotification(
+                "Migration Failed",
+                result.Message ?? "An error occurred during migration. Backup preserved at .csproj.bak",
+                NotificationSeverity.Warning, timeout: 5000, parentWindow: _window);
+        }
+    }
+
     private async Task HandleMigratePackageAsync(PackageReference package)
     {
         var selectedProject = _navigationController?.SelectedProject;
@@ -1259,6 +1361,9 @@ public class LazyNuGetWindow : IDisposable
                 break;
             case "back":
                 _navigationController?.HandleEscapeKey();
+                break;
+            case "migrate":
+                _navigationController?.HandleMigrateProjectKey();
                 break;
         }
     }

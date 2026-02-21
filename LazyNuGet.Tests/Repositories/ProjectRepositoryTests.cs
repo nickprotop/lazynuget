@@ -329,6 +329,56 @@ public class ProjectRepositoryTests : IDisposable
         result!.PackageReferences.Should().BeEmpty();
     }
 
+    // --- packages.config (legacy) ---
+
+    [Fact]
+    public async Task ReadProject_WithPackagesConfig_ReturnsPackagesFromConfig()
+    {
+        // Place packages.config in the same directory as the .csproj
+        var config = SampleDataBuilder.CreatePackagesConfig(
+            ("Newtonsoft.Json", "13.0.1", "net45"),
+            ("Serilog", "3.1.1", "net45"));
+        var csproj = SampleDataBuilder.CreateLegacyCsproj();
+        _temp.WriteFile("packages.config", config);
+        var filePath = _temp.WriteFile("LegacyProject.csproj", csproj);
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result.Should().NotBeNull();
+        result!.PackageReferences.Should().HaveCount(2);
+        result.PackageReferences.Should().Contain(p => p.Id == "Newtonsoft.Json" && p.Version == "13.0.1");
+        result.PackageReferences.Should().Contain(p => p.Id == "Serilog" && p.Version == "3.1.1");
+    }
+
+    [Fact]
+    public async Task ReadProject_WithPackagesConfig_SetsIsPackagesConfigFlag()
+    {
+        var config = SampleDataBuilder.CreatePackagesConfig(("Newtonsoft.Json", "13.0.1", "net45"));
+        var csproj = SampleDataBuilder.CreateLegacyCsproj(("Newtonsoft.Json", "13.0.1"));
+        _temp.WriteFile("packages.config", config);
+        var filePath = _temp.WriteFile("LegacyProject.csproj", csproj);
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result.Should().NotBeNull();
+        result!.IsPackagesConfig.Should().BeTrue();
+        result.PackagesConfigPath.Should().NotBeNull();
+        result.PackagesConfigPath.Should().EndWith("packages.config");
+    }
+
+    [Fact]
+    public async Task ReadProject_WithoutPackagesConfig_IsPackagesConfigFalse()
+    {
+        var csproj = SampleDataBuilder.CreateValidCsproj("net9.0", ("Newtonsoft.Json", "13.0.1"));
+        var filePath = _temp.WriteFile("ModernProject.csproj", csproj);
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result.Should().NotBeNull();
+        result!.IsPackagesConfig.Should().BeFalse();
+        result.PackagesConfigPath.Should().BeNull();
+    }
+
     // --- Simple helpers ---
 
     [Fact]

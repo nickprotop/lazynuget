@@ -19,6 +19,12 @@ public class ProjectInfo
     /// <summary>Full path to the governing Directory.Packages.props file, if CPM is active.</summary>
     public string? PropsFilePath { get; set; }
 
+    /// <summary>True when the project uses the legacy packages.config format instead of PackageReference.</summary>
+    public bool IsPackagesConfig { get; set; }
+
+    /// <summary>Full path to the packages.config file, if the project uses legacy package management.</summary>
+    public string? PackagesConfigPath { get; set; }
+
     public int OutdatedCount => Packages.Count(p => p.IsOutdated);
     public int VulnerableCount => Packages.Count(p => p.HasVulnerability);
 }

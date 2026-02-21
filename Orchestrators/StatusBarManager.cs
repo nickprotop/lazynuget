@@ -74,10 +74,11 @@ public class StatusBarManager
     {
         var folderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
         if (string.IsNullOrEmpty(folderName)) folderName = _currentFolderPath;
-        var cpmBadge = project.IsCpmEnabled ? " [grey50][CPM][/]" : string.Empty;
+        var cpmBadge    = project.IsCpmEnabled      ? " [grey50][CPM][/]"    : string.Empty;
+        var legacyBadge = project.IsPackagesConfig  ? " [grey50][legacy][/]" : string.Empty;
         _topStatusLeft?.SetContent(new List<string>
         {
-            $"[grey50]{Markup.Escape(folderName)}[/] [grey50]>[/] [cyan1]{Markup.Escape(project.Name)}[/]{cpmBadge} [grey50]> Packages[/] [grey50](Esc: Back)[/]"
+            $"[grey50]{Markup.Escape(folderName)}[/] [grey50]>[/] [cyan1]{Markup.Escape(project.Name)}[/]{cpmBadge}{legacyBadge} [grey50]> Packages[/] [grey50](Esc: Back)[/]"
         });
     }
 
@@ -112,14 +113,14 @@ public class StatusBarManager
 
     // ── Help bar (bottom) ─────────────────────────────────────────────────────
 
-    public void UpdateHelpBar(ViewState viewState)
+    public void UpdateHelpBar(ViewState viewState, bool isLegacyProject = false)
     {
-        _bottomHelpBar?.SetContent(new List<string> { BuildHelpBar(viewState) });
+        _bottomHelpBar?.SetContent(new List<string> { BuildHelpBar(viewState, isLegacyProject) });
     }
 
     public bool HandleHelpBarClick(int x) => _helpBar.HandleClick(x);
 
-    private string BuildHelpBar(ViewState viewState)
+    private string BuildHelpBar(ViewState viewState, bool isLegacyProject = false)
     {
         _helpBar.Clear();
 
@@ -136,6 +137,15 @@ public class StatusBarManager
                     .Add("Ctrl+P",  "Settings", () => _onAction?.Invoke("settings"))
                     .Add("?",       "Help",     () => _onAction?.Invoke("help"))
                     .Add("Esc",     "Exit",     () => _onAction?.Invoke("exit"));
+                break;
+            case ViewState.Packages when isLegacyProject:
+                _helpBar
+                    .Add("↑↓",      "Navigate")
+                    .Add("Ctrl+↑↓", "Scroll")
+                    .Add("Ctrl+M",  "Migrate",  () => _onAction?.Invoke("migrate"))
+                    .Add("Ctrl+O",  "Open",     () => _onAction?.Invoke("open"))
+                    .Add("?",       "Help",     () => _onAction?.Invoke("help"))
+                    .Add("Esc",     "Back",     () => _onAction?.Invoke("back"));
                 break;
             case ViewState.Packages:
                 _helpBar

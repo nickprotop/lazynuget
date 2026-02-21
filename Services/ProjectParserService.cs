@@ -41,7 +41,9 @@ public class ProjectParserService
                 TargetFramework = projectData.TargetFramework,
                 TargetFrameworks = projectData.TargetFrameworks,
                 IsCpmEnabled = projectData.IsCpmEnabled,
-                PropsFilePath = projectData.PropsFilePath
+                PropsFilePath = projectData.PropsFilePath,
+                IsPackagesConfig   = projectData.IsPackagesConfig,
+                PackagesConfigPath = projectData.PackagesConfigPath
             };
 
             // Convert package references to PackageReference models
