@@ -6,6 +6,91 @@ namespace LazyNuGet.Tests.Models;
 
 public class PackageReferenceTests
 {
+    // ── VersionSource / CPM ───────────────────────────────────────────────────
+
+    [Fact]
+    public void VersionSource_Default_IsInline()
+    {
+        var pkg = SampleDataBuilder.CreatePackageReference();
+        pkg.VersionSource.Should().Be(VersionSource.Inline);
+    }
+
+    [Fact]
+    public void VersionSource_Central_CanBeSet()
+    {
+        var pkg = SampleDataBuilder.CreatePackageReference();
+        pkg.VersionSource = VersionSource.Central;
+        pkg.VersionSource.Should().Be(VersionSource.Central);
+    }
+
+    [Fact]
+    public void VersionSource_Override_CanBeSet()
+    {
+        var pkg = SampleDataBuilder.CreatePackageReference();
+        pkg.VersionSource = VersionSource.Override;
+        pkg.VersionSource.Should().Be(VersionSource.Override);
+    }
+
+    [Fact]
+    public void PropsFilePath_Default_IsNull()
+    {
+        var pkg = SampleDataBuilder.CreatePackageReference();
+        pkg.PropsFilePath.Should().BeNull();
+    }
+
+    [Fact]
+    public void PropsFilePath_CanBeSet()
+    {
+        var pkg = SampleDataBuilder.CreatePackageReference();
+        pkg.PropsFilePath = "/repo/Directory.Packages.props";
+        pkg.PropsFilePath.Should().Be("/repo/Directory.Packages.props");
+    }
+
+    // ── HasNewerPrerelease ────────────────────────────────────────────────────
+
+    [Fact]
+    public void HasNewerPrerelease_NullPrerelease_ReturnsFalse()
+    {
+        var pkg = SampleDataBuilder.CreatePackageReference(version: "1.0.0", latestVersion: "1.0.0");
+        pkg.LatestPrereleaseVersion = null;
+        pkg.HasNewerPrerelease.Should().BeFalse();
+    }
+
+    [Fact]
+    public void HasNewerPrerelease_EmptyPrerelease_ReturnsFalse()
+    {
+        var pkg = SampleDataBuilder.CreatePackageReference(version: "1.0.0", latestVersion: "1.0.0");
+        pkg.LatestPrereleaseVersion = "";
+        pkg.HasNewerPrerelease.Should().BeFalse();
+    }
+
+    [Fact]
+    public void HasNewerPrerelease_WhenAlreadyOutdated_ReturnsFalse()
+    {
+        // If stable track is already outdated, prerelease hint is suppressed
+        var pkg = SampleDataBuilder.CreatePackageReference(version: "1.0.0", latestVersion: "2.0.0");
+        pkg.LatestPrereleaseVersion = "2.1.0-beta.1";
+        pkg.HasNewerPrerelease.Should().BeFalse();
+    }
+
+    [Fact]
+    public void HasNewerPrerelease_UpToDate_WithDifferentPrerelease_ReturnsTrue()
+    {
+        var pkg = SampleDataBuilder.CreatePackageReference(version: "1.0.0", latestVersion: "1.0.0");
+        pkg.LatestPrereleaseVersion = "1.1.0-beta.1";
+        pkg.HasNewerPrerelease.Should().BeTrue();
+    }
+
+    [Fact]
+    public void HasNewerPrerelease_PrereleaseMatchesLatest_ReturnsFalse()
+    {
+        // If LatestPrereleaseVersion == LatestVersion, no separate hint needed
+        var pkg = SampleDataBuilder.CreatePackageReference(version: "1.0.0", latestVersion: "1.0.0");
+        pkg.LatestPrereleaseVersion = "1.0.0";
+        pkg.HasNewerPrerelease.Should().BeFalse();
+    }
+
+
     [Fact]
     public void IsOutdated_NullLatestVersion_ReturnsFalse()
     {

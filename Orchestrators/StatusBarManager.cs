@@ -74,9 +74,10 @@ public class StatusBarManager
     {
         var folderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
         if (string.IsNullOrEmpty(folderName)) folderName = _currentFolderPath;
+        var cpmBadge = project.IsCpmEnabled ? " [grey50][CPM][/]" : string.Empty;
         _topStatusLeft?.SetContent(new List<string>
         {
-            $"[grey50]{Markup.Escape(folderName)}[/] [grey50]>[/] [cyan1]{Markup.Escape(project.Name)}[/] [grey50]> Packages[/] [grey50](Esc: Back)[/]"
+            $"[grey50]{Markup.Escape(folderName)}[/] [grey50]>[/] [cyan1]{Markup.Escape(project.Name)}[/]{cpmBadge} [grey50]> Packages[/] [grey50](Esc: Back)[/]"
         });
     }
 

@@ -177,9 +177,12 @@ public class SearchCoordinator
         {
             var lower = tf.ToLowerInvariant().TrimStart('.');
             if (!lower.StartsWith("net")) return false;
-            // Extract version number
-            var versionPart = lower.Substring(3).TrimStart('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
-            var numStr = lower.Substring(3, lower.Length - 3 - versionPart.Length);
+            // Modern .NET 5+ TFs always contain a dot (e.g. net9.0, net10.0).
+            // Legacy .NET Framework TFs never contain a dot (e.g. net472, net48).
+            if (!lower.Contains('.')) return false;
+            var afterNet = lower.Substring(3);
+            var dotIndex = afterNet.IndexOf('.');
+            var numStr = dotIndex >= 0 ? afterNet.Substring(0, dotIndex) : afterNet;
             return int.TryParse(numStr, out var v) && v >= 5;
         });
     }

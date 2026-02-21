@@ -13,6 +13,12 @@ public class ProjectInfo
     public List<PackageReference> Packages { get; set; } = new();
     public DateTime LastModified { get; set; }
 
+    /// <summary>True when the project uses Central Package Management (ManagePackageVersionsCentrally=true).</summary>
+    public bool IsCpmEnabled { get; set; }
+
+    /// <summary>Full path to the governing Directory.Packages.props file, if CPM is active.</summary>
+    public string? PropsFilePath { get; set; }
+
     public int OutdatedCount => Packages.Count(p => p.IsOutdated);
     public int VulnerableCount => Packages.Count(p => p.HasVulnerability);
 }

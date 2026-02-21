@@ -39,7 +39,9 @@ public class ProjectParserService
                 FilePath = projectData.FilePath,
                 LastModified = projectData.LastModified,
                 TargetFramework = projectData.TargetFramework,
-                TargetFrameworks = projectData.TargetFrameworks
+                TargetFrameworks = projectData.TargetFrameworks,
+                IsCpmEnabled = projectData.IsCpmEnabled,
+                PropsFilePath = projectData.PropsFilePath
             };
 
             // Convert package references to PackageReference models
@@ -47,8 +49,10 @@ public class ProjectParserService
             {
                 project.Packages.Add(new PackageReference
                 {
-                    Id = pkgRef.Id,
-                    Version = pkgRef.Version
+                    Id            = pkgRef.Id,
+                    Version       = pkgRef.Version,
+                    VersionSource = pkgRef.VersionSource,
+                    PropsFilePath = pkgRef.PropsFilePath
                 });
             }
 

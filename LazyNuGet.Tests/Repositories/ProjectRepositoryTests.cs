@@ -210,6 +210,125 @@ public class ProjectRepositoryTests : IDisposable
         files.Should().BeEmpty();
     }
 
+    // --- CPM (Central Package Management) ---
+
+    [Fact]
+    public async Task ReadProjectFileAsync_CpmEnabled_IsCpmEnabledTrue()
+    {
+        var propsPath = _temp.WriteFile("Directory.Packages.props",
+            SampleDataBuilder.CreatePropsFile(("Newtonsoft.Json", "13.0.3")));
+        var csproj = SampleDataBuilder.CreateCpmCsproj("net9.0", "Newtonsoft.Json");
+        var filePath = _temp.WriteFile("CpmProject.csproj", csproj);
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result.Should().NotBeNull();
+        result!.IsCpmEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ReadProjectFileAsync_CpmEnabled_PropsFilePathSet()
+    {
+        var propsPath = _temp.WriteFile("Directory.Packages.props",
+            SampleDataBuilder.CreatePropsFile(("Newtonsoft.Json", "13.0.3")));
+        var filePath = _temp.WriteFile("CpmProject.csproj",
+            SampleDataBuilder.CreateCpmCsproj("net9.0", "Newtonsoft.Json"));
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result!.PropsFilePath.Should().NotBeNull();
+        result.PropsFilePath.Should().EndWith("Directory.Packages.props");
+    }
+
+    [Fact]
+    public async Task ReadProjectFileAsync_CpmEnabled_PackageVersionResolvedFromProps()
+    {
+        _temp.WriteFile("Directory.Packages.props",
+            SampleDataBuilder.CreatePropsFile(("Newtonsoft.Json", "13.0.3")));
+        var filePath = _temp.WriteFile("CpmProject.csproj",
+            SampleDataBuilder.CreateCpmCsproj("net9.0", "Newtonsoft.Json"));
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result!.PackageReferences.Should().HaveCount(1);
+        result.PackageReferences[0].Id.Should().Be("Newtonsoft.Json");
+        result.PackageReferences[0].Version.Should().Be("13.0.3");
+    }
+
+    [Fact]
+    public async Task ReadProjectFileAsync_CpmEnabled_VersionSourceIsCentral()
+    {
+        _temp.WriteFile("Directory.Packages.props",
+            SampleDataBuilder.CreatePropsFile(("Newtonsoft.Json", "13.0.3")));
+        var filePath = _temp.WriteFile("CpmProject.csproj",
+            SampleDataBuilder.CreateCpmCsproj("net9.0", "Newtonsoft.Json"));
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result!.PackageReferences[0].VersionSource.Should().Be(LazyNuGet.Models.VersionSource.Central);
+    }
+
+    [Fact]
+    public async Task ReadProjectFileAsync_CpmWithVersionOverride_VersionSourceIsOverride()
+    {
+        _temp.WriteFile("Directory.Packages.props",
+            SampleDataBuilder.CreatePropsFile(("Newtonsoft.Json", "13.0.1")));
+
+        var csproj = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include=""Newtonsoft.Json"" VersionOverride=""13.0.3"" />
+  </ItemGroup>
+</Project>";
+        var filePath = _temp.WriteFile("OverrideProject.csproj", csproj);
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result!.PackageReferences[0].VersionSource.Should().Be(LazyNuGet.Models.VersionSource.Override);
+        result.PackageReferences[0].Version.Should().Be("13.0.3");
+    }
+
+    [Fact]
+    public async Task ReadProjectFileAsync_NoCpm_IsCpmEnabledFalse()
+    {
+        var csproj = SampleDataBuilder.CreateValidCsproj("net9.0", ("Newtonsoft.Json", "13.0.3"));
+        var filePath = _temp.WriteFile("NormalProject.csproj", csproj);
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result!.IsCpmEnabled.Should().BeFalse();
+        result.PropsFilePath.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ReadProjectFileAsync_NoCpm_VersionSourceIsInline()
+    {
+        var csproj = SampleDataBuilder.CreateValidCsproj("net9.0", ("Newtonsoft.Json", "13.0.3"));
+        var filePath = _temp.WriteFile("NormalProject.csproj", csproj);
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        result!.PackageReferences[0].VersionSource.Should().Be(LazyNuGet.Models.VersionSource.Inline);
+    }
+
+    [Fact]
+    public async Task ReadProjectFileAsync_CpmEnabled_PackageWithoutPropsEntry_SkippedOrEmpty()
+    {
+        // Package is referenced in csproj but not in props → no resolved version → should be skipped
+        _temp.WriteFile("Directory.Packages.props",
+            SampleDataBuilder.CreatePropsFile(("SomethingElse", "1.0.0")));
+        var filePath = _temp.WriteFile("CpmProject.csproj",
+            SampleDataBuilder.CreateCpmCsproj("net9.0", "MissingFromProps"));
+
+        var result = await _repo.ReadProjectFileAsync(filePath);
+
+        // Package without a resolved version should not appear in the list
+        result!.PackageReferences.Should().BeEmpty();
+    }
+
     // --- Simple helpers ---
 
     [Fact]

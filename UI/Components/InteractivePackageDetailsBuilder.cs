@@ -27,9 +27,16 @@ public static class InteractivePackageDetailsBuilder
         var controls = new List<IWindowControl>();
 
         // Package header
+        var versionSourceTag = package.VersionSource switch
+        {
+            VersionSource.Central  => " [grey50][central][/]",
+            VersionSource.Override => " [yellow][override][/]",
+            _                      => string.Empty
+        };
+
         var header = Controls.Markup()
             .AddLine($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]")
-            .AddLine($"[grey70]Installed: {Markup.Escape(package.Version)}[/]")
+            .AddLine($"[grey70]Installed: {Markup.Escape(package.Version)}[/]{versionSourceTag}")
             .AddEmptyLine()
             .WithMargin(1, 1, 0, 0)
             .Build();

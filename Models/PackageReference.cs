@@ -1,12 +1,31 @@
 namespace LazyNuGet.Models;
 
 /// <summary>
+/// Indicates where the package version is declared.
+/// </summary>
+public enum VersionSource
+{
+    /// <summary>Version is declared inline in the .csproj file (normal mode).</summary>
+    Inline,
+    /// <summary>Version is declared centrally in Directory.Packages.props (CPM).</summary>
+    Central,
+    /// <summary>Version is a VersionOverride inside the .csproj, overriding the central declaration.</summary>
+    Override
+}
+
+/// <summary>
 /// Represents an installed NuGet package reference
 /// </summary>
 public class PackageReference
 {
     public string Id { get; set; } = string.Empty;
     public string Version { get; set; } = string.Empty;
+
+    /// <summary>Where the version is declared — Inline, Central (props file), or Override.</summary>
+    public VersionSource VersionSource { get; set; } = VersionSource.Inline;
+
+    /// <summary>Full path to Directory.Packages.props when VersionSource is Central or Override.</summary>
+    public string? PropsFilePath { get; set; }
     public string? LatestVersion { get; set; }
     public bool IsOutdated
     {

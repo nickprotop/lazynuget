@@ -94,11 +94,9 @@ public class PackageDetailsController : IDisposable
 
         if (tabIndex < 0) return false;
 
+        _currentDetailTab = (PackageDetailTab)tabIndex;
         if (_tabControl != null)
-        {
             _tabControl.ActiveTabIndex = tabIndex;
-            _currentDetailTab = (PackageDetailTab)tabIndex;
-        }
 
         return true;
     }

@@ -109,4 +109,61 @@ public static class SampleDataBuilder
   </packageSources>
 </configuration>";
     }
+
+    /// <summary>
+    /// Create a Directory.Packages.props file with the given package version entries.
+    /// </summary>
+    public static string CreatePropsFile(params (string id, string version)[] packages)
+    {
+        var entries = string.Join("\n    ",
+            packages.Select(p => $"<PackageVersion Include=\"{p.id}\" Version=\"{p.version}\" />"));
+
+        return $@"<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    {entries}
+  </ItemGroup>
+</Project>";
+    }
+
+    /// <summary>
+    /// Create a CPM-enabled .csproj that references packages without inline versions.
+    /// </summary>
+    public static string CreateCpmCsproj(
+        string targetFramework = "net9.0",
+        params string[] packageIds)
+    {
+        var refs = string.Join("\n    ",
+            packageIds.Select(id => $"<PackageReference Include=\"{id}\" />"));
+
+        return $@"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>{targetFramework}</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    {refs}
+  </ItemGroup>
+</Project>";
+    }
+
+    /// <summary>
+    /// Create a minimal .sln file referencing the given projects.
+    /// </summary>
+    public static string CreateSolutionFile(params (string name, string relativePath)[] projects)
+    {
+        var projectEntries = string.Join("\n",
+            projects.Select(p =>
+                $"Project(\"{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}\") = \"{p.name}\", \"{p.relativePath}\", \"{{{Guid.NewGuid()}}}\"\nEndProject"));
+
+        return $@"
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+{projectEntries}
+Global
+EndGlobal
+";
+    }
 }

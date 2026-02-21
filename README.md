@@ -66,6 +66,7 @@ That's it! Use arrow keys to navigate, `Enter` to view package details, and `Ctr
 | 🗂️ **Solution Groups** | Projects grouped by `.sln` file in the sidebar |
 | 🔄 **Migrate** | One-click migration from deprecated packages to their recommended replacements |
 | 🧪 **Prerelease** | Prerelease version hints in package details |
+| 📦 **CPM** | Full Central Package Management support — versions resolved from `Directory.Packages.props` |
 | ⚙️ **Configuration** | Private feeds, custom sources, settings |
 
 ## Keyboard Shortcuts

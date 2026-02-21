@@ -1,6 +1,7 @@
 using SharpConsoleUI;
 using SharpConsoleUI.Core;
 using LazyNuGet.Models;
+using LazyNuGet.Repositories;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Modals;
 
@@ -18,6 +19,7 @@ public class OperationOrchestrator
     private readonly OperationHistoryService _historyService;
     private readonly ErrorHandler _errorHandler;
     private readonly Window? _parentWindow;
+    private readonly CpmRepository _cpmRepository = new();
 
     public OperationOrchestrator(
         ConsoleWindowSystem windowSystem,
@@ -45,20 +47,47 @@ public class OperationOrchestrator
         if (!package.IsOutdated || string.IsNullOrEmpty(package.LatestVersion))
             return new OperationResult { Success = false };
 
+        var cpmNote = package.VersionSource == VersionSource.Central
+            ? "\n\n[CPM] This version is shared centrally — all projects using this package will be updated."
+            : string.Empty;
+
         var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
             "Update Package",
-            $"Update {package.Id} from {package.Version} to {package.LatestVersion}?",
+            $"Update {package.Id} from {package.Version} to {package.LatestVersion}?{cpmNote}",
             parentWindow: _parentWindow);
         if (!confirm) return new OperationResult { Success = false };
+
+        // For centrally-managed packages, update Directory.Packages.props directly.
+        Func<CancellationToken, IProgress<string>, Task<OperationResult>> operation;
+        string description;
+
+        if (package.VersionSource == VersionSource.Central && !string.IsNullOrEmpty(package.PropsFilePath))
+        {
+            var propsPath = package.PropsFilePath;
+            var latestVersion = package.LatestVersion!;
+            operation = async (ct, progress) =>
+            {
+                progress.Report($"Updating {package.Id} to {latestVersion} in Directory.Packages.props...");
+                await _cpmRepository.UpdatePackageVersionAsync(propsPath, package.Id, latestVersion);
+                progress.Report($"Updated {package.Id} to {latestVersion}");
+                return OperationResult.FromSuccess($"Updated {package.Id} to {latestVersion} in Directory.Packages.props");
+            };
+            description = $"Updating {package.Id} to {package.LatestVersion} (central)";
+        }
+        else
+        {
+            operation = (ct, progress) => _cliService.UpdatePackageAsync(
+                project.FilePath, package.Id, package.LatestVersion, ct, progress);
+            description = $"Updating {package.Id} to {package.LatestVersion}";
+        }
 
         // Show update progress modal with cancellation support
         var result = await OperationProgressModal.ShowAsync(
             _windowSystem,
             OperationType.Update,
-            (ct, progress) => _cliService.UpdatePackageAsync(
-                project.FilePath, package.Id, package.LatestVersion, ct, progress),
+            operation,
             "Updating Package",
-            $"Updating {package.Id} to {package.LatestVersion}",
+            description,
             _historyService,
             project.FilePath,
             project.Name,
@@ -78,9 +107,17 @@ public class OperationOrchestrator
         PackageReference package,
         ProjectInfo project)
     {
+        // For centrally-managed packages, inform the user that only the project reference
+        // will be removed; the central version declaration in Directory.Packages.props is preserved.
+        var confirmMessage = package.VersionSource == VersionSource.Central
+            ? $"Remove {package.Id} from {project.Name}?\n\n[CPM] The central version in Directory.Packages.props will be preserved — other projects that reference this package are unaffected."
+            : package.VersionSource == VersionSource.Override
+            ? $"Remove {package.Id} (version override {package.Version}) from {project.Name}?"
+            : $"Remove {package.Id} from {project.Name}?";
+
         var confirm = await ConfirmationModal.ShowAsync(_windowSystem,
             "Remove Package",
-            $"Remove {package.Id} from {project.Name}?",
+            confirmMessage,
             parentWindow: _parentWindow);
         if (!confirm) return new OperationResult { Success = false };
 
@@ -169,14 +206,37 @@ public class OperationOrchestrator
                 parentWindow: _parentWindow);
             if (!confirm) return new OperationResult { Success = false };
 
+            // For centrally-managed packages, update Directory.Packages.props directly.
+            // For inline/override packages, use dotnet add which modifies the project file.
+            Func<CancellationToken, IProgress<string>, Task<OperationResult>> operation;
+            string operationDescription;
+
+            if (package.VersionSource == VersionSource.Central && !string.IsNullOrEmpty(package.PropsFilePath))
+            {
+                var propsPath = package.PropsFilePath;
+                operation = async (ct, progress) =>
+                {
+                    progress.Report($"Updating {package.Id} to {selectedVersion} in Directory.Packages.props...");
+                    await _cpmRepository.UpdatePackageVersionAsync(propsPath, package.Id, selectedVersion);
+                    progress.Report($"Updated {package.Id} to {selectedVersion}");
+                    return OperationResult.FromSuccess($"Updated {package.Id} to {selectedVersion} in Directory.Packages.props");
+                };
+                operationDescription = $"Changing {package.Id} to version {selectedVersion} (central)";
+            }
+            else
+            {
+                operation = (ct, progress) => _cliService.AddPackageAsync(
+                    project.FilePath, package.Id, selectedVersion, ct, progress);
+                operationDescription = $"Changing {package.Id} to version {selectedVersion}";
+            }
+
             // Use OperationProgressModal for progress feedback and history recording
             var result = await OperationProgressModal.ShowAsync(
                 _windowSystem,
                 OperationType.Update,  // Changing version is an update operation
-                (ct, progress) => _cliService.AddPackageAsync(
-                    project.FilePath, package.Id, selectedVersion, ct, progress),
+                operation,
                 "Changing Package Version",
-                $"Changing {package.Id} to version {selectedVersion}",
+                operationDescription,
                 _historyService,
                 project.FilePath,
                 project.Name,

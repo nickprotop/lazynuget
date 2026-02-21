@@ -133,6 +133,21 @@ Manage NuGet sources and add private feeds with optional credentials.
 
 ---
 
+## Central Package Management (CPM)
+
+LazyNuGet fully supports projects using [Central Package Management](https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management) (`Directory.Packages.props`).
+
+**How it works:**
+- Projects with `<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>` are detected automatically
+- Package versions are resolved from `Directory.Packages.props` — packages no longer appear missing even though their `.csproj` has no inline version
+- A `[CPM]` badge appears in the breadcrumb when viewing a centrally-managed project's packages
+- Each package shows a `[central]` or `[override]` tag next to its installed version
+- **Ctrl+U / Ctrl+V** on a central package writes the new version directly to `Directory.Packages.props`, updating all projects that share that version at once
+- **Ctrl+X** removes only the project's `<PackageReference>` entry — the central `<PackageVersion>` in props is preserved for other projects
+- `VersionOverride` packages are shown with a `[override]` tag and update via the project file, not the props file
+
+---
+
 ## VS Code Extension
 
 LazyNuGet running natively inside VS Code as an editor tab with full mouse and keyboard support.
