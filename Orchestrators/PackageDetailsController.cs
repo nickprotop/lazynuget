@@ -304,6 +304,13 @@ public class PackageDetailsController : IDisposable
             // Stop the loading animation
             StopLoadingAnimation();
 
+            // Guard: abort if the user navigated away from the Packages view while the
+            // fetch was running.  SwitchToProjectsView() sets SelectedProject to null
+            // synchronously before touching any UI, so this check is race-safe even
+            // though we're on a thread-pool thread.
+            if (cancellationToken.IsCancellationRequested || _getSelectedProject() == null)
+                return;
+
             // Rebuild the details view with the fetched data and interactive buttons
             var isLegacy = _getSelectedProject()?.IsPackagesConfig == true;
             var controls = InteractivePackageDetailsBuilder.BuildInteractiveDetails(
@@ -385,6 +392,20 @@ public class PackageDetailsController : IDisposable
         AsyncHelper.FireAndForget(
             () => _onMigrateProject(),
             ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Migration Error", "Failed to migrate project.", "Migration", _window));
+    }
+
+    /// <summary>
+    /// Cancel any in-flight package details fetch and stop the loading animation.
+    /// Call this when navigating away from the Packages view so stale results
+    /// cannot overwrite the Projects dashboard.
+    /// </summary>
+    public void CancelCurrentLoad()
+    {
+        var cts = _packageLoadCancellation;
+        _packageLoadCancellation = null;
+        try { cts?.Cancel(); } catch (ObjectDisposedException) { }
+        try { cts?.Dispose(); } catch (ObjectDisposedException) { }
+        StopLoadingAnimation();
     }
 
     public void Dispose()

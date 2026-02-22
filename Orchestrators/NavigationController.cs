@@ -90,6 +90,9 @@ public class NavigationController
         _currentViewState = ViewState.Projects;
         _selectedProject = null;
 
+        // Cancel any in-flight NuGet fetch so it cannot overwrite the dashboard
+        _packageDetailsController?.CancelCurrentLoad();
+
         // Update header to remove back arrow
         if (_leftPanelHeader != null)
         {
