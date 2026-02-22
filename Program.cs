@@ -14,10 +14,12 @@ class Program
         {
             Console.WriteLine("Usage: lazynuget [path]");
             Console.WriteLine("       lazynuget --migrate [path]");
+            Console.WriteLine("       lazynuget --migrate-cpm [path]");
             Console.WriteLine();
-            Console.WriteLine("  path       Folder to open (default: current directory)");
-            Console.WriteLine("  --migrate  Migrate packages.config projects to PackageReference");
-            Console.WriteLine("  --help     Show this help message");
+            Console.WriteLine("  path           Folder to open (default: current directory)");
+            Console.WriteLine("  --migrate      Migrate packages.config projects to PackageReference");
+            Console.WriteLine("  --migrate-cpm  Migrate PackageReference projects to Central Package Management");
+            Console.WriteLine("  --help         Show this help message");
             return 0;
         }
 
@@ -51,6 +53,45 @@ class Program
                 Console.WriteLine("No packages.config projects found.");
 
             return results.All(r => r.Success) ? 0 : 1;
+        }
+
+        // Handle --migrate-cpm (headless, no UI)
+        if (args.Length > 0 && args[0] == "--migrate-cpm")
+        {
+            string targetPath = args.Length > 1
+                ? Path.GetFullPath(args[1])
+                : Environment.CurrentDirectory;
+
+            if (!Directory.Exists(targetPath))
+            {
+                Console.Error.WriteLine($"Error: Directory '{targetPath}' does not exist.");
+                return 1;
+            }
+
+            var svc      = new CpmMigrationService();
+            var analysis = await svc.AnalyzeAsync(
+                targetPath, new Progress<string>(Console.WriteLine));
+
+            if (analysis.ProjectsToMigrate.Count == 0)
+            {
+                Console.WriteLine("No projects to migrate (all already use CPM or packages.config).");
+                return 0;
+            }
+
+            var result = await svc.MigrateAsync(
+                targetPath, analysis, new Progress<string>(Console.WriteLine));
+
+            if (result.Success)
+                Console.WriteLine(
+                    $"  ✓ {result.ProjectsMigrated} project(s) migrated, " +
+                    $"{result.PackagesCentralized} package(s) centralized" +
+                    (result.VersionConflictsResolved > 0
+                        ? $", {result.VersionConflictsResolved} conflict(s) resolved (highest version used)"
+                        : string.Empty));
+            else
+                Console.WriteLine($"  ✗ {result.Error}");
+
+            return result.Success ? 0 : 1;
         }
 
         var configService = new ConfigurationService();

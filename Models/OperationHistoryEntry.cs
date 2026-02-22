@@ -19,4 +19,8 @@ public class OperationHistoryEntry
     public string? PackageId { get; init; }
     public string? PackageVersion { get; init; }
     public string? PreviousVersion { get; init; }
+
+    // CPM metadata — needed so rollback/retry can route through CpmRepository instead of CLI
+    public VersionSource VersionSource { get; init; } = VersionSource.Inline;
+    public string? PropsFilePath { get; init; }
 }

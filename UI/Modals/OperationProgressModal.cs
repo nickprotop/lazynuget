@@ -28,6 +28,8 @@ public class OperationProgressModal : ModalBase<OperationResult>
     private readonly string? _packageId;
     private readonly string? _packageVersion;
     private readonly string? _previousVersion;
+    private readonly VersionSource _versionSource;
+    private readonly string? _propsFilePath;
 
     private MarkupControl? _statusLabel;
     private ProgressBarControl? _progressBar;
@@ -48,7 +50,9 @@ public class OperationProgressModal : ModalBase<OperationResult>
         string? projectName,
         string? packageId,
         string? packageVersion,
-        string? previousVersion)
+        string? previousVersion,
+        VersionSource versionSource = VersionSource.Inline,
+        string? propsFilePath = null)
     {
         _operationType = operationType;
         _operation = operation;
@@ -60,6 +64,8 @@ public class OperationProgressModal : ModalBase<OperationResult>
         _packageId = packageId;
         _packageVersion = packageVersion;
         _previousVersion = previousVersion;
+        _versionSource = versionSource;
+        _propsFilePath = propsFilePath;
     }
 
     public static Task<OperationResult> ShowAsync(
@@ -74,7 +80,9 @@ public class OperationProgressModal : ModalBase<OperationResult>
         string? packageId = null,
         string? packageVersion = null,
         Window? parentWindow = null,
-        string? previousVersion = null)
+        string? previousVersion = null,
+        VersionSource versionSource = VersionSource.Inline,
+        string? propsFilePath = null)
     {
         var instance = new OperationProgressModal(
             operationType,
@@ -86,7 +94,9 @@ public class OperationProgressModal : ModalBase<OperationResult>
             projectName,
             packageId,
             packageVersion,
-            previousVersion);
+            previousVersion,
+            versionSource,
+            propsFilePath);
         return ((ModalBase<OperationResult>)instance).ShowAsync(windowSystem, parentWindow);
     }
 
@@ -435,7 +445,9 @@ public class OperationProgressModal : ModalBase<OperationResult>
                 ProjectPath = _projectPath ?? "",
                 PackageId = _packageId,
                 PackageVersion = _packageVersion,
-                PreviousVersion = _previousVersion
+                PreviousVersion = _previousVersion,
+                VersionSource = _versionSource,
+                PropsFilePath = _propsFilePath
             };
             _historyService.AddEntry(historyEntry);
         }

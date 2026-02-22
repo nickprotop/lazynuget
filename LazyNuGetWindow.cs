@@ -427,7 +427,8 @@ public class LazyNuGetWindow : IDisposable
             (proj, pkg) => ShowDependencyTreeAsync(proj, pkg),
             () => ConfirmExitAsync(),
             _operationOrchestrator,
-            proj => HandleMigrateProjectAsync(proj));
+            proj => HandleMigrateProjectAsync(proj),
+            proj => ReloadProjectAndRefreshView(proj));
     }
 
     private async Task RefreshThreadAsync(Window window, CancellationToken ct)
@@ -597,6 +598,16 @@ public class LazyNuGetWindow : IDisposable
                 AsyncHelper.FireAndForget(
                     () => ShowOperationHistoryAsync(),
                     ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Info, "History Error", "Failed to show history.", "UI", _window));
+                e.Handled = true;
+            }
+            // Ctrl+G - Migrate all projects to Central Package Management (projects view only)
+            else if (e.KeyInfo.Key == ConsoleKey.G && e.KeyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            {
+                if (_navigationController?.CurrentViewState == ViewState.Projects)
+                    AsyncHelper.FireAndForget(
+                        () => HandleMigrateToCpmAsync(),
+                        ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning,
+                            "CPM Error", "Failed to migrate to CPM.", "Migration", _window));
                 e.Handled = true;
             }
             // Ctrl+M - Migrate packages.config project to PackageReference
@@ -1071,6 +1082,22 @@ public class LazyNuGetWindow : IDisposable
         }
     }
 
+    private async Task HandleMigrateToCpmAsync()
+    {
+        var result = await CpmMigrationWizard.ShowAsync(
+            _windowSystem, _currentFolderPath, parentWindow: _window);
+
+        if (result?.Success == true)
+        {
+            _windowSystem.NotificationStateService.ShowNotification(
+                "CPM Migration Complete",
+                $"Migrated {result.ProjectsMigrated} project(s), " +
+                    $"{result.PackagesCentralized} package(s) centralized",
+                NotificationSeverity.Success, timeout: 4000, parentWindow: _window);
+            await LoadProjectsAsync();
+        }
+    }
+
     private async Task HandleMigrateProjectAsync(ProjectInfo project)
     {
         if (!project.IsPackagesConfig) return;
@@ -1373,6 +1400,13 @@ public class LazyNuGetWindow : IDisposable
                 break;
             case "migrate":
                 _navigationController?.HandleMigrateProjectKey();
+                break;
+            case "migrate-cpm":
+                if (_navigationController?.CurrentViewState == ViewState.Projects)
+                    AsyncHelper.FireAndForget(
+                        () => HandleMigrateToCpmAsync(),
+                        ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning,
+                            "CPM Error", "Failed to migrate to CPM.", "Migration", _window));
                 break;
         }
     }

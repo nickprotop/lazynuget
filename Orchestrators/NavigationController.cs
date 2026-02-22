@@ -30,6 +30,7 @@ public class NavigationController
     private readonly Func<Task> _confirmExitAsync;
     private readonly OperationOrchestrator? _operationOrchestrator;
     private readonly Func<ProjectInfo, Task>? _handleMigrateProjectAsync;
+    private readonly Func<ProjectInfo, Task>? _reloadAndRefreshAsync;
 
     private ViewState _currentViewState = ViewState.Projects;
     private ProjectInfo? _selectedProject;
@@ -57,7 +58,8 @@ public class NavigationController
         Func<ProjectInfo, PackageReference?, Task> showDependencyTreeAsync,
         Func<Task> confirmExitAsync,
         OperationOrchestrator? operationOrchestrator = null,
-        Func<ProjectInfo, Task>? handleMigrateProjectAsync = null)
+        Func<ProjectInfo, Task>? handleMigrateProjectAsync = null,
+        Func<ProjectInfo, Task>? reloadAndRefreshAsync = null)
     {
         _contextList = contextList;
         _leftPanelHeader = leftPanelHeader;
@@ -75,6 +77,7 @@ public class NavigationController
         _confirmExitAsync = confirmExitAsync;
         _operationOrchestrator = operationOrchestrator;
         _handleMigrateProjectAsync = handleMigrateProjectAsync;
+        _reloadAndRefreshAsync = reloadAndRefreshAsync;
     }
 
     public void SwitchToProjectsView()
@@ -437,11 +440,21 @@ public class NavigationController
             onViewPackages: () => SwitchToPackagesView(project),
             onUpdateAll: () => HandleUpdateAll(project),
             onRestore: () => HandleRestore(project),
-            onUpdateSelected: packages => AsyncHelper.FireAndForget(
-                () => _operationOrchestrator?.HandleUpdateSelectedAsync(packages, project) ?? Task.CompletedTask,
+            onUpdateSelected: packages => AsyncHelper.FireAndForget(async () =>
+                {
+                    var result = await (_operationOrchestrator?.HandleUpdateSelectedAsync(packages, project)
+                        ?? Task.FromResult(new OperationResult { Success = false }));
+                    if (result.Success && _reloadAndRefreshAsync != null)
+                        await _reloadAndRefreshAsync(project);
+                },
                 ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Update Selected Error", "Failed to update selected packages.", "NuGet", _window)),
-            onRemoveSelected: packages => AsyncHelper.FireAndForget(
-                () => _operationOrchestrator?.HandleRemoveSelectedAsync(packages, project) ?? Task.CompletedTask,
+            onRemoveSelected: packages => AsyncHelper.FireAndForget(async () =>
+                {
+                    var result = await (_operationOrchestrator?.HandleRemoveSelectedAsync(packages, project)
+                        ?? Task.FromResult(new OperationResult { Success = false }));
+                    if (result.Success && _reloadAndRefreshAsync != null)
+                        await _reloadAndRefreshAsync(project);
+                },
                 ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Remove Selected Error", "Failed to remove selected packages.", "NuGet", _window)),
             onDeps: () => AsyncHelper.FireAndForget(
                 () => _showDependencyTreeAsync(project, null),

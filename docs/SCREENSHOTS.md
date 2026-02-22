@@ -148,6 +148,23 @@ LazyNuGet fully supports projects using [Central Package Management](https://lea
 
 ---
 
+## CPM Migration Wizard
+
+Press **Ctrl+G** from the Projects view to migrate all inline-version projects to Central Package Management in one step.
+
+![CPM Migration Wizard](cpm-migration-wizard.png)
+
+**Features shown:**
+- Analysis tab scans all projects and lists which will be migrated and which are skipped
+- Version conflicts resolved automatically (highest version wins)
+- Migration tab streams live progress output
+- Results tab summarises migrated projects, centralised packages, and backup file locations
+- Wizard is resizable and movable
+- Dashboard hint (`💡 Press Ctrl+G`) appears for any project with inline versions
+- Also available headless: `lazynuget --migrate-cpm /path/to/solution`
+
+---
+
 ## VS Code Extension
 
 LazyNuGet running natively inside VS Code as an editor tab with full mouse and keyboard support.

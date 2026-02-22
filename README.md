@@ -88,6 +88,7 @@ LazyNuGet is fully usable with both keyboard and mouse. Click to focus controls,
 | `Ctrl+U` | Update package / Update all |
 | `Ctrl+V` | Change package version |
 | `Ctrl+X` | Remove package |
+| `Ctrl+G` | Migrate all projects to Central Package Management (CPM) |
 | `Ctrl+M` | Migrate legacy `packages.config` project to `PackageReference` |
 | `Ctrl+L` | Open log viewer |
 | `Ctrl+↑/↓` | Scroll details panel |
@@ -215,6 +216,9 @@ lazynuget /path/to/your/projects
 
 # Migrate all packages.config projects in a directory tree (headless, no UI)
 lazynuget --migrate /path/to/your/projects
+
+# Migrate all projects to Central Package Management (headless)
+lazynuget --migrate-cpm /path/to/your/projects
 
 # Show help
 lazynuget --help

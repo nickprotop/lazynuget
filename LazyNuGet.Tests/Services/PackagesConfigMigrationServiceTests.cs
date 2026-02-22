@@ -1,5 +1,7 @@
 using System.Xml.Linq;
 using FluentAssertions;
+using LazyNuGet.Models;
+using LazyNuGet.Repositories;
 using LazyNuGet.Services;
 using LazyNuGet.Tests.Helpers;
 
@@ -371,6 +373,157 @@ public class PackagesConfigMigrationServiceTests : IDisposable
         result.Success.Should().BeFalse();
         result.PackagesMigrated.Should().Be(0);
         result.Error.Should().Be("Something went wrong");
+    }
+
+    // ── Round-trip: ProjectRepository reads correctly after migration ─────────
+
+    [Fact]
+    public async Task MigrateProject_RoundTrip_ProjectRepositoryReadsPackagesCorrectly()
+    {
+        // Arrange: legacy MSBuild-namespaced project
+        var projectPath = _temp.WriteFile("LegacyApp.csproj",
+            SampleDataBuilder.CreateLegacyCsproj(
+                ("Newtonsoft.Json", "13.0.1"),
+                ("Serilog", "3.1.1")));
+        _temp.WriteFile("packages.config",
+            SampleDataBuilder.CreatePackagesConfig(
+                ("Newtonsoft.Json", "13.0.1", "net45"),
+                ("Serilog", "3.1.1", "net45")));
+
+        // Act: migrate
+        var migrationResult = await _sut.MigrateProjectAsync(projectPath);
+        migrationResult.Success.Should().BeTrue();
+
+        // Re-read with ProjectRepository — must handle the legacy MSBuild XML namespace
+        var repo = new ProjectRepository();
+        var data = await repo.ReadProjectFileAsync(projectPath);
+
+        // Assert: packages are visible
+        data.Should().NotBeNull();
+        data!.PackageReferences.Should().HaveCount(2,
+            "ProjectRepository must find PackageReferences in a legacy (xmlns) .csproj after migration");
+    }
+
+    [Fact]
+    public async Task MigrateProject_RoundTrip_VersionSourceIsInline()
+    {
+        // Arrange
+        var projectPath = _temp.WriteFile("LegacyApp.csproj",
+            SampleDataBuilder.CreateLegacyCsproj(("Newtonsoft.Json", "13.0.1")));
+        _temp.WriteFile("packages.config",
+            SampleDataBuilder.CreatePackagesConfig(("Newtonsoft.Json", "13.0.1", "net45")));
+
+        // Act
+        await _sut.MigrateProjectAsync(projectPath);
+
+        var repo = new ProjectRepository();
+        var data = await repo.ReadProjectFileAsync(projectPath);
+
+        // Assert: migrated packages should be inline (no props file involved)
+        data.Should().NotBeNull();
+        data!.PackageReferences.Should().HaveCount(1);
+        data.PackageReferences[0].VersionSource.Should().Be(VersionSource.Inline,
+            "packages.config migration produces inline versions in the .csproj");
+        data.PackageReferences[0].Version.Should().Be("13.0.1");
+        data.PackageReferences[0].Id.Should().Be("Newtonsoft.Json");
+    }
+
+    [Fact]
+    public async Task MigrateProject_RoundTrip_IsPackagesConfigFalseAfterMigration()
+    {
+        // Arrange
+        var projectPath = _temp.WriteFile("LegacyApp.csproj",
+            SampleDataBuilder.CreateLegacyCsproj(("Newtonsoft.Json", "13.0.1")));
+        _temp.WriteFile("packages.config",
+            SampleDataBuilder.CreatePackagesConfig(("Newtonsoft.Json", "13.0.1", "net45")));
+
+        // Act
+        await _sut.MigrateProjectAsync(projectPath);
+
+        var repo = new ProjectRepository();
+        var data = await repo.ReadProjectFileAsync(projectPath);
+
+        // Assert: no longer detected as packages.config project
+        data.Should().NotBeNull();
+        data!.IsPackagesConfig.Should().BeFalse(
+            "packages.config is deleted by migration so the project should read as modern PackageReference");
+    }
+
+    [Fact]
+    public async Task MigrateProject_RoundTrip_IsCpmEnabledFalseWithoutPropsFile()
+    {
+        // Arrange: standalone migration with no Directory.Packages.props nearby
+        var projectPath = _temp.WriteFile("LegacyApp.csproj",
+            SampleDataBuilder.CreateLegacyCsproj(("Newtonsoft.Json", "13.0.1")));
+        _temp.WriteFile("packages.config",
+            SampleDataBuilder.CreatePackagesConfig(("Newtonsoft.Json", "13.0.1", "net45")));
+
+        // Act
+        await _sut.MigrateProjectAsync(projectPath);
+
+        var repo = new ProjectRepository();
+        var data = await repo.ReadProjectFileAsync(projectPath);
+
+        // Assert: no CPM without a props file
+        data.Should().NotBeNull();
+        data!.IsCpmEnabled.Should().BeFalse(
+            "there is no Directory.Packages.props so CPM should not be detected");
+    }
+
+    [Fact]
+    public async Task MigrateProject_RoundTrip_IsCpmEnabledTrueWhenPropsFileExists()
+    {
+        // Arrange: a Directory.Packages.props already exists in the same folder
+        // (e.g., other projects have already been CPM-migrated)
+        _temp.WriteFile("Directory.Packages.props",
+            SampleDataBuilder.CreatePropsFile(("Newtonsoft.Json", "13.0.1")));
+        var projectPath = _temp.WriteFile("LegacyApp.csproj",
+            SampleDataBuilder.CreateLegacyCsproj(("Newtonsoft.Json", "13.0.1")));
+        _temp.WriteFile("packages.config",
+            SampleDataBuilder.CreatePackagesConfig(("Newtonsoft.Json", "13.0.1", "net45")));
+
+        // Act: after packages.config migration the inline versions are in the .csproj,
+        // but ProjectRepository should also detect the nearby props file
+        await _sut.MigrateProjectAsync(projectPath);
+
+        var repo = new ProjectRepository();
+        var data = await repo.ReadProjectFileAsync(projectPath);
+
+        // Assert: CPM detected via props file
+        data.Should().NotBeNull();
+        data!.IsCpmEnabled.Should().BeTrue(
+            "Directory.Packages.props exists in the folder so CPM should be detected");
+    }
+
+    [Fact]
+    public async Task MigrateProject_RoundTrip_CorrectPackageCount()
+    {
+        // Arrange: three packages
+        var projectPath = _temp.WriteFile("LegacyApp.csproj",
+            SampleDataBuilder.CreateLegacyCsproj(
+                ("Newtonsoft.Json", "13.0.1"),
+                ("Serilog", "3.1.1"),
+                ("AutoMapper", "12.0.1")));
+        _temp.WriteFile("packages.config",
+            SampleDataBuilder.CreatePackagesConfig(
+                ("Newtonsoft.Json", "13.0.1", "net45"),
+                ("Serilog", "3.1.1", "net45"),
+                ("AutoMapper", "12.0.1", "net45")));
+
+        // Act
+        var migrationResult = await _sut.MigrateProjectAsync(projectPath);
+        migrationResult.PackagesMigrated.Should().Be(3);
+
+        var repo = new ProjectRepository();
+        var data = await repo.ReadProjectFileAsync(projectPath);
+
+        // Assert: same 3 packages are visible after round-trip
+        data.Should().NotBeNull();
+        data!.PackageReferences.Should().HaveCount(3,
+            "all migrated packages should be readable by ProjectRepository");
+        data.PackageReferences.Should().Contain(p => p.Id == "Newtonsoft.Json" && p.Version == "13.0.1");
+        data.PackageReferences.Should().Contain(p => p.Id == "Serilog" && p.Version == "3.1.1");
+        data.PackageReferences.Should().Contain(p => p.Id == "AutoMapper" && p.Version == "12.0.1");
     }
 
     public void Dispose() => _temp.Dispose();

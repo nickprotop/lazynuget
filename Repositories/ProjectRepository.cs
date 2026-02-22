@@ -30,8 +30,10 @@ public class ProjectRepository
             };
 
             // Extract target framework(s)
-            var singleTf = doc.Descendants("TargetFramework").FirstOrDefault()?.Value;
-            var multiTf  = doc.Descendants("TargetFrameworks").FirstOrDefault()?.Value;
+            // Use LocalName-based queries so MSBuild-namespaced files (e.g. legacy .csproj with
+            // xmlns="http://schemas.microsoft.com/developer/msbuild/2003") are handled correctly.
+            var singleTf = Desc(doc, "TargetFramework").FirstOrDefault()?.Value;
+            var multiTf  = Desc(doc, "TargetFrameworks").FirstOrDefault()?.Value;
             var frameworks = singleTf != null
                 ? new List<string> { singleTf }
                 : (multiTf?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -51,31 +53,36 @@ public class ProjectRepository
                 return projectData;
             }
 
-            // Detect Central Package Management
-            bool isCpm = doc.Descendants("ManagePackageVersionsCentrally")
+            // Detect Central Package Management.
+            // ManagePackageVersionsCentrally may live in the .csproj itself OR in a
+            // Directory.Packages.props file in a parent directory (the standard MSBuild pattern).
+            bool isCpm = Desc(doc, "ManagePackageVersionsCentrally")
                 .Any(e => e.Value.Equals("true", StringComparison.OrdinalIgnoreCase));
 
             Dictionary<string, string> centralVersions = new(StringComparer.OrdinalIgnoreCase);
-            string? propsFilePath = null;
+            string? propsFilePath = CpmRepository.FindPropsFile(projectFilePath);
 
-            if (isCpm)
+            if (!isCpm && propsFilePath != null)
             {
-                propsFilePath = CpmRepository.FindPropsFile(projectFilePath);
-                if (propsFilePath != null)
-                    centralVersions = await _cpmRepository.ReadPackageVersionsAsync(propsFilePath);
+                var propsDoc = XDocument.Load(propsFilePath);
+                isCpm = propsDoc.Descendants("ManagePackageVersionsCentrally")
+                    .Any(e => e.Value.Equals("true", StringComparison.OrdinalIgnoreCase));
             }
+
+            if (isCpm && propsFilePath != null)
+                centralVersions = await _cpmRepository.ReadPackageVersionsAsync(propsFilePath);
 
             projectData.IsCpmEnabled = isCpm;
             projectData.PropsFilePath = propsFilePath;
 
             // Extract package references — supports inline, CPM central, and VersionOverride
-            foreach (var packageRef in doc.Descendants("PackageReference"))
+            foreach (var packageRef in Desc(doc, "PackageReference"))
             {
                 var id = packageRef.Attribute("Include")?.Value;
                 if (string.IsNullOrEmpty(id)) continue;
 
                 var inlineVersion    = packageRef.Attribute("Version")?.Value
-                                    ?? packageRef.Element("Version")?.Value;
+                                    ?? packageRef.Elements().FirstOrDefault(e => e.Name.LocalName == "Version")?.Value;
                 var overrideVersion  = packageRef.Attribute("VersionOverride")?.Value;
 
                 string? version;
@@ -160,6 +167,13 @@ public class ProjectRepository
     /// Parse a packages.config file and return a list of package references.
     /// Returns an empty list on malformed XML.
     /// </summary>
+    /// <summary>
+    /// Descendant query by LocalName, ignoring XML namespace.
+    /// Required for MSBuild-namespaced .csproj files (xmlns="http://schemas.microsoft.com/developer/msbuild/2003").
+    /// </summary>
+    private static IEnumerable<XElement> Desc(XDocument doc, string localName) =>
+        doc.Descendants().Where(e => e.Name.LocalName == localName);
+
     private static List<PackageReferenceData> ParsePackagesConfig(string path)
     {
         try

@@ -127,12 +127,18 @@ public class StatusBarManager
         switch (viewState)
         {
             case ViewState.Projects:
+                var hasMigratable = _projects.Any(p =>
+                    !p.IsPackagesConfig &&
+                    p.Packages.Any(pkg => pkg.VersionSource == VersionSource.Inline));
                 _helpBar
                     .Add("↑↓",      "Navigate")
                     .Add("Ctrl+↑↓", "Scroll")
                     .Add("Enter",   "View")
                     .Add("Ctrl+O",  "Open",     () => _onAction?.Invoke("open"))
-                    .Add("Ctrl+S",  "Search",   () => _onAction?.Invoke("search"))
+                    .Add("Ctrl+S",  "Search",   () => _onAction?.Invoke("search"));
+                if (hasMigratable)
+                    _helpBar.Add("Ctrl+G", "CPM", () => _onAction?.Invoke("migrate-cpm"));
+                _helpBar
                     .Add("Ctrl+H",  "History",  () => _onAction?.Invoke("history"))
                     .Add("Ctrl+P",  "Settings", () => _onAction?.Invoke("settings"))
                     .Add("?",       "Help",     () => _onAction?.Invoke("help"))

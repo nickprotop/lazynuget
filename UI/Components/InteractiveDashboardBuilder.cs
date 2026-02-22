@@ -45,6 +45,17 @@ public static class InteractiveDashboardBuilder
         var statsCard = BuildStatsCard(project, outdatedPackages);
         controls.Add(statsCard);
 
+        // CPM migration hint: shown whenever any package still has an inline Version attribute,
+        // including projects that are under a CPM folder but haven't had their versions centralized yet.
+        if (!project.IsPackagesConfig && project.Packages.Any(p => p.VersionSource == VersionSource.Inline))
+        {
+            var cpmHint = Controls.Markup()
+                .AddLine("[grey50]💡 Press [/][cyan1]Ctrl+G[/][grey50] to centralize versions with CPM[/]")
+                .WithMargin(1, 0, 0, 1)
+                .Build();
+            controls.Add(cpmHint);
+        }
+
         // Separator before toolbar
         var separator = Controls.Rule("[grey70]Quick Actions[/]");
         separator.Margin = new Margin(1, 0, 1, 0);
@@ -124,10 +135,11 @@ public static class InteractiveDashboardBuilder
         controls.Add(separatorAfter);
 
         // Hint line above the checkbox list
-        var hint = Controls.Markup()
-            .AddLine("[grey50]Space: toggle · Tab: reach bulk actions[/]")
-            .WithMargin(1, 0, 1, 0)
-            .Build();
+        var hintBuilder = Controls.Markup()
+            .AddLine("[grey50]Space: toggle · Tab: reach bulk actions[/]");
+        if (project.IsCpmEnabled)
+            hintBuilder.AddLine("[grey50]⚠ CPM: updates write to [/][cyan1]Directory.Packages.props[/][grey50] and affect all projects[/]");
+        var hint = hintBuilder.WithMargin(1, 0, 1, 0).Build();
         controls.Add(hint);
 
         // Build checkbox package list

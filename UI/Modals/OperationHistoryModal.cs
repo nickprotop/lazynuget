@@ -6,6 +6,7 @@ using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
 using Spectre.Console;
 using LazyNuGet.Models;
+using LazyNuGet.Repositories;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
 using AsyncHelper = LazyNuGet.Services.AsyncHelper;
@@ -37,6 +38,7 @@ public class OperationHistoryModal : ModalBase<bool>
 
     private readonly OperationHistoryService _historyService;
     private readonly DotNetCliService _cliService;
+    private readonly CpmRepository _cpmRepository;
     private readonly ConsoleWindowSystem _windowSystem;
     private readonly Window? _parentWindow;
 
@@ -67,11 +69,13 @@ public class OperationHistoryModal : ModalBase<bool>
         ConsoleWindowSystem windowSystem,
         OperationHistoryService historyService,
         DotNetCliService cliService,
+        CpmRepository cpmRepository,
         Window? parentWindow)
     {
         _windowSystem = windowSystem;
         _historyService = historyService;
         _cliService = cliService;
+        _cpmRepository = cpmRepository;
         _parentWindow = parentWindow;
     }
 
@@ -79,9 +83,11 @@ public class OperationHistoryModal : ModalBase<bool>
         ConsoleWindowSystem windowSystem,
         OperationHistoryService historyService,
         DotNetCliService cliService,
+        CpmRepository? cpmRepository = null,
         Window? parentWindow = null)
     {
-        var instance = new OperationHistoryModal(windowSystem, historyService, cliService, parentWindow);
+        var instance = new OperationHistoryModal(windowSystem, historyService, cliService,
+            cpmRepository ?? new CpmRepository(), parentWindow);
         return instance.ShowAsync(windowSystem, parentWindow);
     }
 
@@ -494,10 +500,10 @@ public class OperationHistoryModal : ModalBase<bool>
         await Task.Delay(100);
 
         // Retry the operation
-        await RetryOperation(_windowSystem, _cliService, _historyService, selectedEntry, _parentWindow);
+        await RetryOperation(_windowSystem, _cliService, _historyService, selectedEntry, _parentWindow, _cpmRepository);
 
         // Reopen history modal
-        await ShowAsync(_windowSystem, _historyService, _cliService, _parentWindow);
+        await ShowAsync(_windowSystem, _historyService, _cliService, _cpmRepository, _parentWindow);
     }
 
     private async Task HandleRollbackAsync()
@@ -522,21 +528,52 @@ public class OperationHistoryModal : ModalBase<bool>
             CloseWithResult(false);
             await Task.Delay(100);
 
-            await OperationProgressModal.ShowAsync(
-                _windowSystem,
-                OperationType.Update,
-                (ct, progress) => _cliService.AddPackageAsync(
-                    selectedEntry.ProjectPath, selectedEntry.PackageId!, selectedEntry.PreviousVersion, ct, progress),
-                "Undo Update",
-                $"Reverting {selectedEntry.PackageId} to {selectedEntry.PreviousVersion}",
-                _historyService,
-                selectedEntry.ProjectPath,
-                selectedEntry.ProjectName,
-                selectedEntry.PackageId,
-                selectedEntry.PreviousVersion,
-                _parentWindow);
+            // CPM packages: update the props file directly instead of running dotnet add
+            if (selectedEntry.VersionSource == VersionSource.Central && !string.IsNullOrEmpty(selectedEntry.PropsFilePath))
+            {
+                var propsPath = selectedEntry.PropsFilePath;
+                var packageId = selectedEntry.PackageId!;
+                var previousVersion = selectedEntry.PreviousVersion!;
 
-            await ShowAsync(_windowSystem, _historyService, _cliService, _parentWindow);
+                await OperationProgressModal.ShowAsync(
+                    _windowSystem,
+                    OperationType.Update,
+                    async (ct, progress) =>
+                    {
+                        progress.Report($"Reverting {packageId} to {previousVersion} in Directory.Packages.props...");
+                        await _cpmRepository.UpdatePackageVersionAsync(propsPath, packageId, previousVersion);
+                        progress.Report($"Reverted {packageId} to {previousVersion}");
+                        return OperationResult.FromSuccess($"Reverted {packageId} to {previousVersion}");
+                    },
+                    "Undo Update",
+                    $"Reverting {packageId} to {previousVersion}",
+                    _historyService,
+                    selectedEntry.ProjectPath,
+                    selectedEntry.ProjectName,
+                    packageId,
+                    previousVersion,
+                    _parentWindow,
+                    versionSource: VersionSource.Central,
+                    propsFilePath: propsPath);
+            }
+            else
+            {
+                await OperationProgressModal.ShowAsync(
+                    _windowSystem,
+                    OperationType.Update,
+                    (ct, progress) => _cliService.AddPackageAsync(
+                        selectedEntry.ProjectPath, selectedEntry.PackageId!, selectedEntry.PreviousVersion, ct, progress),
+                    "Undo Update",
+                    $"Reverting {selectedEntry.PackageId} to {selectedEntry.PreviousVersion}",
+                    _historyService,
+                    selectedEntry.ProjectPath,
+                    selectedEntry.ProjectName,
+                    selectedEntry.PackageId,
+                    selectedEntry.PreviousVersion,
+                    _parentWindow);
+            }
+
+            await ShowAsync(_windowSystem, _historyService, _cliService, _cpmRepository, _parentWindow);
             return;
         }
 
@@ -565,10 +602,10 @@ public class OperationHistoryModal : ModalBase<bool>
         await Task.Delay(100);
 
         // Perform rollback operation
-        await RollbackOperation(_windowSystem, _cliService, _historyService, selectedEntry, _parentWindow);
+        await RollbackOperation(_windowSystem, _cliService, _historyService, selectedEntry, _parentWindow, _cpmRepository);
 
         // Reopen history modal
-        await ShowAsync(_windowSystem, _historyService, _cliService, _parentWindow);
+        await ShowAsync(_windowSystem, _historyService, _cliService, _cpmRepository, _parentWindow);
     }
 
     private static bool IsRollbackable(OperationHistoryEntry? entry)
@@ -609,12 +646,37 @@ public class OperationHistoryModal : ModalBase<bool>
         DotNetCliService cliService,
         OperationHistoryService historyService,
         OperationHistoryEntry entry,
-        Window? parentWindow)
+        Window? parentWindow,
+        CpmRepository? cpmRepository = null)
     {
-        var result = await OperationProgressModal.ShowAsync(
-            windowSystem,
-            entry.Type,
-            (ct, progress) => entry.Type switch
+        Func<CancellationToken, IProgress<string>, Task<OperationResult>> operation;
+
+        if (entry.Type == OperationType.Update
+            && entry.VersionSource == VersionSource.Central
+            && cpmRepository != null
+            && !string.IsNullOrEmpty(entry.PropsFilePath))
+        {
+            // CPM update: write directly to Directory.Packages.props
+            var propsPath = entry.PropsFilePath;
+            var packageId = entry.PackageId!;
+            var packageVersion = entry.PackageVersion!;
+            operation = async (ct, progress) =>
+            {
+                progress.Report($"Updating {packageId} to {packageVersion} in Directory.Packages.props...");
+                await cpmRepository.UpdatePackageVersionAsync(propsPath, packageId, packageVersion);
+                progress.Report($"Updated {packageId} to {packageVersion}");
+                return OperationResult.FromSuccess($"Updated {packageId} to {packageVersion} in Directory.Packages.props");
+            };
+        }
+        else if (entry.Type == OperationType.Add && entry.VersionSource == VersionSource.Central)
+        {
+            // CPM add: no --version flag (version is in props file)
+            operation = (ct, progress) => cliService.AddPackageAsync(
+                entry.ProjectPath, entry.PackageId!, null, ct, progress);
+        }
+        else
+        {
+            operation = (ct, progress) => entry.Type switch
             {
                 OperationType.Restore => cliService.RestorePackagesAsync(entry.ProjectPath, ct, progress),
                 OperationType.Update => cliService.UpdatePackageAsync(
@@ -624,7 +686,13 @@ public class OperationHistoryModal : ModalBase<bool>
                 OperationType.Remove => cliService.RemovePackageAsync(
                     entry.ProjectPath, entry.PackageId!, ct, progress),
                 _ => throw new InvalidOperationException($"Unknown operation type: {entry.Type}")
-            },
+            };
+        }
+
+        var result = await OperationProgressModal.ShowAsync(
+            windowSystem,
+            entry.Type,
+            operation,
             $"Retrying {entry.Type}",
             $"Retrying: {entry.Description}",
             historyService,
@@ -632,7 +700,9 @@ public class OperationHistoryModal : ModalBase<bool>
             entry.ProjectName,
             entry.PackageId,
             entry.PackageVersion,
-            parentWindow);
+            parentWindow,
+            versionSource: entry.VersionSource,
+            propsFilePath: entry.PropsFilePath);
 
         // Show result notification
         if (result.Success)
@@ -651,23 +721,38 @@ public class OperationHistoryModal : ModalBase<bool>
         DotNetCliService cliService,
         OperationHistoryService historyService,
         OperationHistoryEntry entry,
-        Window? parentWindow)
+        Window? parentWindow,
+        CpmRepository? cpmRepository = null)
     {
         // Determine the reverse operation
         var rollbackType = entry.Type == OperationType.Add ? OperationType.Remove : OperationType.Add;
         var operationName = rollbackType == OperationType.Remove ? "Removing" : "Adding";
 
-        var result = await OperationProgressModal.ShowAsync(
-            windowSystem,
-            rollbackType,
-            (ct, progress) => entry.Type switch
+        Func<CancellationToken, IProgress<string>, Task<OperationResult>> operation;
+
+        if (entry.Type == OperationType.Remove && entry.VersionSource == VersionSource.Central)
+        {
+            // CPM Remove rollback: re-add the package reference WITHOUT --version
+            // (the version is still declared in Directory.Packages.props)
+            operation = (ct, progress) => cliService.AddPackageAsync(
+                entry.ProjectPath, entry.PackageId!, null, ct, progress);
+        }
+        else
+        {
+            operation = (ct, progress) => entry.Type switch
             {
                 OperationType.Add => cliService.RemovePackageAsync(
                     entry.ProjectPath, entry.PackageId!, ct, progress),
                 OperationType.Remove => cliService.AddPackageAsync(
                     entry.ProjectPath, entry.PackageId!, entry.PackageVersion, ct, progress),
                 _ => throw new InvalidOperationException($"Cannot rollback operation type: {entry.Type}")
-            },
+            };
+        }
+
+        var result = await OperationProgressModal.ShowAsync(
+            windowSystem,
+            rollbackType,
+            operation,
             $"Rolling Back {entry.Type}",
             $"{operationName} {entry.PackageId} to reverse {entry.Type} operation",
             historyService,

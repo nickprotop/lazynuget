@@ -94,7 +94,9 @@ public class OperationOrchestrator
             package.Id,
             package.LatestVersion,
             _parentWindow,
-            previousVersion: package.Version);
+            previousVersion: package.Version,
+            versionSource: package.VersionSource,
+            propsFilePath: package.PropsFilePath);
 
         if (result.Success) InvalidateCacheFor(package.Id);
         return result;
@@ -242,7 +244,10 @@ public class OperationOrchestrator
                 project.Name,
                 package.Id,
                 selectedVersion,
-                _parentWindow);
+                _parentWindow,
+                previousVersion: package.Version,
+                versionSource: package.VersionSource,
+                propsFilePath: package.PropsFilePath);
 
             return result;
         }
@@ -554,6 +559,6 @@ public class OperationOrchestrator
     /// </summary>
     public async Task ShowOperationHistoryAsync()
     {
-        await OperationHistoryModal.ShowAsync(_windowSystem, _historyService, _cliService, _parentWindow);
+        await OperationHistoryModal.ShowAsync(_windowSystem, _historyService, _cliService, _cpmRepository, _parentWindow);
     }
 }
