@@ -5,6 +5,7 @@ using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
 using Spectre.Console;
+using NuGet.Versioning;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
@@ -45,6 +46,10 @@ public class DependencyTreeModal : ModalBase<bool>
     // State (Mode A only)
     private FilterMode _filterMode = FilterMode.All;
     private List<ProjectDependencyTree> _trees = new();
+    private CancellationTokenSource? _outdatedCheckCts;
+    private int _outdatedChecksCompleted;
+    private int _outdatedChecksTotal;
+    private string? _outdatedSummary;
 
     // Controls
     private ScrollablePanelControl? _scrollPanel;
@@ -246,6 +251,7 @@ public class DependencyTreeModal : ModalBase<bool>
                 // Mode A: Project dependencies via dotnet CLI
                 _trees = await _cliService.ListTransitiveDependenciesAsync(_project.FilePath);
                 RefreshProjectTree();
+                StartOutdatedChecks();
             }
         },
         ex =>
@@ -298,7 +304,10 @@ public class DependencyTreeModal : ModalBase<bool>
 
     protected override void OnCleanup()
     {
-        // Unsubscribe event handlers to prevent memory leaks
+        _outdatedCheckCts?.Cancel();
+        _outdatedCheckCts?.Dispose();
+        _outdatedCheckCts = null;
+
         if (_filterDropdown != null && _dropdownHandler != null)
             _filterDropdown.SelectedIndexChanged -= _dropdownHandler;
     }
@@ -330,15 +339,7 @@ public class DependencyTreeModal : ModalBase<bool>
 
         var totalTop = _trees.Sum(t => t.TopLevelPackages.Count);
         var totalTransitive = _trees.Sum(t => t.TransitivePackages.Count);
-        var filterText = _filterMode switch
-        {
-            FilterMode.TopLevelOnly => "Top-Level Only",
-            FilterMode.TransitiveOnly => "Transitive Only",
-            _ => "All"
-        };
-        _statusLabel?.SetContent(new List<string> {
-            $"[{ColorScheme.SecondaryMarkup}]Filter:[/] [{ColorScheme.PrimaryMarkup}]{filterText}[/]  [{ColorScheme.MutedMarkup}]{totalTop} direct, {totalTransitive} transitive[/]"
-        });
+        UpdateStatusLabel(totalTop, totalTransitive);
 
         var isMultiTarget = _trees.Count > 1;
 
@@ -380,7 +381,10 @@ public class DependencyTreeModal : ModalBase<bool>
                         var requested = dep.RequestedVersion != dep.ResolvedVersion
                             ? $" [grey35](requested {Markup.Escape(dep.RequestedVersion ?? "")})[/]"
                             : "";
-                        lines.Add($"[grey23]{fwPipe}{secPipe}{depGuide}[/][{itemColor}]{Markup.Escape(dep.PackageId)}[/] [grey70]{Markup.Escape(dep.ResolvedVersion)}[/]{requested}");
+                        var outdated = dep.IsOutdated == true
+                            ? $"  [yellow]⚠ {Markup.Escape(dep.LatestVersion!)} available[/]"
+                            : "";
+                        lines.Add($"[grey23]{fwPipe}{secPipe}{depGuide}[/][{itemColor}]{Markup.Escape(dep.PackageId)}[/] [grey70]{Markup.Escape(dep.ResolvedVersion)}[/]{requested}{outdated}");
                     }
                 }
 
@@ -409,7 +413,10 @@ public class DependencyTreeModal : ModalBase<bool>
                         var requested = dep.RequestedVersion != dep.ResolvedVersion
                             ? $" [grey35](requested {Markup.Escape(dep.RequestedVersion ?? "")})[/]"
                             : "";
-                        lines.Add($"[grey23]{secPipe}{depGuide}[/][{itemColor}]{Markup.Escape(dep.PackageId)}[/] [grey70]{dep.ResolvedVersion}[/]{requested}");
+                        var outdated = dep.IsOutdated == true
+                            ? $"  [yellow]⚠ {Markup.Escape(dep.LatestVersion!)} available[/]"
+                            : "";
+                        lines.Add($"[grey23]{secPipe}{depGuide}[/][{itemColor}]{Markup.Escape(dep.PackageId)}[/] [grey70]{dep.ResolvedVersion}[/]{requested}{outdated}");
                     }
                 }
 
@@ -421,6 +428,113 @@ public class DependencyTreeModal : ModalBase<bool>
         }
 
         SetTreeContent(lines);
+    }
+
+    private void UpdateStatusLabel(int totalTop, int totalTransitive)
+    {
+        var filterText = _filterMode switch
+        {
+            FilterMode.TopLevelOnly => "Top-Level Only",
+            FilterMode.TransitiveOnly => "Transitive Only",
+            _ => "All"
+        };
+        var progressText = _outdatedSummary != null
+            ? $"  [{ColorScheme.MutedMarkup}]· {_outdatedSummary}[/]"
+            : _outdatedChecksTotal > 0
+                ? $"  [{ColorScheme.MutedMarkup}]· Checking updates {_outdatedChecksCompleted}/{_outdatedChecksTotal}...[/]"
+                : "";
+        _statusLabel?.SetContent(new List<string> {
+            $"[{ColorScheme.SecondaryMarkup}]Filter:[/] [{ColorScheme.PrimaryMarkup}]{filterText}[/]  [{ColorScheme.MutedMarkup}]{totalTop} direct, {totalTransitive} transitive[/]{progressText}"
+        });
+    }
+
+    private void UpdateStatusWithProgress()
+    {
+        if (!_trees.Any()) return;
+        var totalTop = _trees.Sum(t => t.TopLevelPackages.Count);
+        var totalTransitive = _trees.Sum(t => t.TransitivePackages.Count);
+        UpdateStatusLabel(totalTop, totalTransitive);
+    }
+
+    private void StartOutdatedChecks()
+    {
+        // Collect all dependency nodes across all frameworks
+        var allNodes = _trees
+            .SelectMany(t => t.TopLevelPackages.Concat(t.TransitivePackages))
+            .ToList();
+
+        if (allNodes.Count == 0) return;
+
+        // Deduplicate by (PackageId, ResolvedVersion) to avoid redundant API calls
+        var uniqueDeps = allNodes
+            .GroupBy(n => (n.PackageId.ToLowerInvariant(), n.ResolvedVersion))
+            .ToList();
+
+        _outdatedChecksTotal = uniqueDeps.Count;
+        _outdatedChecksCompleted = 0;
+        _outdatedSummary = null;
+        _outdatedCheckCts = new CancellationTokenSource();
+        var ct = _outdatedCheckCts.Token;
+
+        AsyncHelper.FireAndForget(async () =>
+        {
+            var semaphore = new SemaphoreSlim(10);
+            var tasks = uniqueDeps.Select(async group =>
+            {
+                await semaphore.WaitAsync(ct);
+                try
+                {
+                    var representative = group.First();
+                    var (_, latestVersion) = await _nugetClientService.CheckIfOutdatedAsync(
+                        representative.PackageId, representative.ResolvedVersion, ct);
+
+                    // Do our own version comparison since cache keys by packageId only
+                    bool isOutdated = false;
+                    if (latestVersion != null
+                        && NuGetVersion.TryParse(representative.ResolvedVersion, out var current)
+                        && NuGetVersion.TryParse(latestVersion, out var latest))
+                    {
+                        isOutdated = latest > current;
+                    }
+
+                    // Apply result to all nodes with this package+version
+                    foreach (var node in group)
+                    {
+                        node.LatestVersion = latestVersion;
+                        node.IsOutdated = isOutdated;
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                    var completed = Interlocked.Increment(ref _outdatedChecksCompleted);
+
+                    // Refresh every 5 completions for progressive UI
+                    if (completed % 5 == 0)
+                    {
+                        UpdateStatusWithProgress();
+                        RefreshProjectTree();
+                    }
+                }
+            });
+
+            await Task.WhenAll(tasks);
+
+            // Final refresh
+            var outdatedCount = allNodes.Count(n => n.IsOutdated == true);
+            _outdatedSummary = outdatedCount > 0
+                ? $"[yellow]{outdatedCount} outdated[/]"
+                : "all up to date";
+            RefreshProjectTree();
+        },
+        ex =>
+        {
+            if (ex is not OperationCanceledException)
+            {
+                _outdatedSummary = "update check failed";
+                UpdateStatusWithProgress();
+            }
+        });
     }
 
     // Helper to build the tree for Mode B (package dependencies)

@@ -6,6 +6,8 @@ public class DependencyNode
     public string ResolvedVersion { get; set; } = string.Empty;
     public string? RequestedVersion { get; set; }
     public bool IsTransitive { get; set; }
+    public string? LatestVersion { get; set; }
+    public bool? IsOutdated { get; set; }
 }
 
 public class ProjectDependencyTree
