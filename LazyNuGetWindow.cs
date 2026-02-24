@@ -97,6 +97,14 @@ public class LazyNuGetWindow : IDisposable
         AsyncHelper.FireAndForget(
             () => LoadProjectsAsync(),
             ex => _errorHandler?.HandleAsync(ex, ErrorSeverity.Warning, "Load Error", "Failed to load projects.", "Init", _window));
+
+        // Check for updates (best-effort, non-blocking)
+        AsyncHelper.FireAndForget(async () =>
+        {
+            var result = await UpdateCheckService.CheckAsync();
+            if (result.UpdateAvailable)
+                _statusBarManager?.SetUpdateAvailable(result.LatestVersion);
+        });
     }
 
     private NuGetCacheService CreateNuGetCacheService()

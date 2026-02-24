@@ -1,3 +1,4 @@
+using System.Reflection;
 using SharpConsoleUI;
 using SharpConsoleUI.Configuration;
 using SharpConsoleUI.Drivers;
@@ -9,6 +10,16 @@ class Program
 {
     static async Task<int> Main(string[] args)
     {
+        // Handle --version / -v
+        if (args.Any(a => a == "--version" || a == "-v"))
+        {
+            var version = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion ?? "unknown";
+            Console.WriteLine($"lazynuget {version}");
+            return 0;
+        }
+
         // Handle --help / -h
         if (args.Any(a => a == "--help" || a == "-h"))
         {
@@ -19,6 +30,7 @@ class Program
             Console.WriteLine("  path           Folder to open (default: current directory)");
             Console.WriteLine("  --migrate      Migrate packages.config projects to PackageReference");
             Console.WriteLine("  --migrate-cpm  Migrate PackageReference projects to Central Package Management");
+            Console.WriteLine("  --version      Show version information");
             Console.WriteLine("  --help         Show this help message");
             return 0;
         }

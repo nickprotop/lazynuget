@@ -25,6 +25,7 @@ public class StatusBarManager
 
     private string           _currentFolderPath;
     private List<ProjectInfo> _projects;
+    private string?          _updateAvailableVersion;
 
     public StatusBarManager(
         MarkupControl?          topStatusLeft,
@@ -57,6 +58,7 @@ public class StatusBarManager
 
     public void SetFolderPath(string folderPath)  => _currentFolderPath = folderPath;
     public void SetProjects(List<ProjectInfo> projects) => _projects = projects;
+    public void SetUpdateAvailable(string version) => _updateAvailableVersion = version;
 
     // ── Breadcrumbs ───────────────────────────────────────────────────────────
 
@@ -231,6 +233,13 @@ public class StatusBarManager
 
         var time = DateTime.Now.ToString("HH:mm:ss");
         _statusBar.AddSegment($"[grey70]{time}[/]", time);
+
+        if (_updateAvailableVersion != null)
+            _statusBar
+                .AddSegment("[grey70]  [/]", "  ")
+                .AddSegment(
+                    $"[yellow]⬆ v{_updateAvailableVersion} available[/]",
+                    $"⬆ v{_updateAvailableVersion} available");
 
         if (_isCacheWarm?.Invoke() == true)
             _statusBar
