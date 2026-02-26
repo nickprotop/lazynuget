@@ -25,6 +25,7 @@ function copyWebviewFiles() {
     fs.mkdirSync(webviewDist, { recursive: true });
   }
   fs.copyFileSync("src/webview/main.js", path.join(webviewDist, "main.js"));
+  fs.copyFileSync("src/webview/index.html", path.join(webviewDist, "index.html"));
 }
 
 async function main() {

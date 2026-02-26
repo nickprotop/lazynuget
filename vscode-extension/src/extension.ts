@@ -263,7 +263,7 @@ function getWebviewHtml(
   // Read the HTML template and replace placeholders
   const htmlPath = path.join(
     extensionUri.fsPath,
-    "src",
+    "dist",
     "webview",
     "index.html"
   );
