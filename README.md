@@ -31,7 +31,7 @@ LazyNuGet brings a fast, keyboard-driven interface to NuGet package management. 
 
 ![LazyNuGet Dashboard](.github/dashboard-overview.png)
 
-**[View more screenshots](docs/SCREENSHOTS.md)**
+**[View more screenshots](docs/screenshots/SCREENSHOTS.md)**
 
 ## Quick Start
 

@@ -81,7 +81,7 @@ Select from all available package versions with an interactive version picker, f
 
 ![Version Selection](https://raw.githubusercontent.com/nickprotop/lazynuget/main/vscode-extension/resources/screenshot-version-selection.png)
 
-For more screenshots of LazyNuGet features, see the [main documentation](https://github.com/nickprotop/lazynuget/blob/main/docs/SCREENSHOTS.md).
+For more screenshots of LazyNuGet features, see the [main documentation](https://github.com/nickprotop/lazynuget/blob/main/docs/screenshots/SCREENSHOTS.md).
 
 ## Extension Settings
 

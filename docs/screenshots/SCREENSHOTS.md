@@ -169,7 +169,7 @@ Press **Ctrl+G** from the Projects view to migrate all inline-version projects t
 
 LazyNuGet running natively inside VS Code as an editor tab with full mouse and keyboard support.
 
-![VS Code Dashboard](../vscode-extension/resources/screenshot-dashboard.png)
+![VS Code Dashboard](../../vscode-extension/resources/screenshot-dashboard.png)
 
 **Features shown:**
 - Embedded terminal UI in VS Code editor tab
