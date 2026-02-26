@@ -3,12 +3,12 @@
   "displayName": "LazyNuGet",
   "description": "A TUI-based NuGet package manager embedded in VS Code",
   "version": "0.1.0",
-  "publisher": "lazynuget",
+  "publisher": "nickprotop",
   "license": "MIT",
   "icon": "resources/icon-128.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nickmartin1ee7/lazynuget"
+    "url": "https://github.com/nickprotop/lazynuget"
   },
   "engines": {
     "vscode": "^1.96.0"

@@ -281,16 +281,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # TODO: Publish VSIX to VS Code Marketplace
-      # Requires VSCE_PAT secret (Personal Access Token from https://dev.azure.com)
-      # Uncomment when ready to publish:
-      #
-      # - name: Setup Node.js
-      #   uses: actions/setup-node@v4
-      #   with:
-      #     node-version: '20'
-      #
-      # - name: Publish to VS Code Marketplace
-      #   env:
-      #     VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      #   run: npx @vscode/vsce publish --packagePath vsix/*.vsix
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Publish to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish --packagePath vsix/*.vsix
