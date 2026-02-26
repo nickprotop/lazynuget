@@ -137,7 +137,7 @@ jobs:
           VSCODE_TARGET: ${{ matrix.vscode-target }}
         run: |
           cd vscode-extension
-          npx @vscode/vsce package --target "$VSCODE_TARGET" --no-dependencies
+          npx @vscode/vsce package --target "$VSCODE_TARGET"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
