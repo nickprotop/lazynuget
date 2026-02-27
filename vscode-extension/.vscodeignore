@@ -1,6 +1,7 @@
 src/**
 node_modules/**
 !node_modules/node-pty/**
+!node_modules/@xterm/**
 .gitignore
 tsconfig.json
 esbuild.mjs
