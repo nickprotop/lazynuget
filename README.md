@@ -37,7 +37,7 @@ LazyNuGet brings a fast, keyboard-driven interface to NuGet package management. 
 
 Get LazyNuGet running in seconds:
 
-**Option 1: .NET Global Tool** (if you have .NET 9 installed)
+**Option 1: .NET Global Tool** (requires .NET 9 or later)
 ```bash
 dotnet tool install --global LazyNuGet
 lazynuget
@@ -103,7 +103,7 @@ LazyNuGet is fully usable with both keyboard and mouse. Click to focus controls,
 
 ### .NET Global Tool (Recommended for .NET developers)
 
-If you have .NET 10.0 or later installed:
+If you have .NET 9.0 or later installed:
 
 ```bash
 dotnet tool install --global LazyNuGet
@@ -191,7 +191,7 @@ sudo mv lazynuget-linux-x64 /usr/local/bin/lazynuget
 ### Build from Source
 
 Requirements:
-- .NET 10.0 SDK
+- .NET 9.0 SDK or later
 - Terminal with Unicode support
 
 ```bash
