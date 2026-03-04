@@ -45,7 +45,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="!Exists('../ConsoleEx/SharpConsoleUI/SharpConsoleUI.csproj')">
-    <PackageReference Include="SharpConsoleUI" Version="2.4.33" />
+    <PackageReference Include="SharpConsoleUI" Version="2.4.39" />
   </ItemGroup>
 
   <!-- Additional dependencies -->
