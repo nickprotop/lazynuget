@@ -1130,7 +1130,7 @@ public class LazyNuGetWindow : IDisposable
                     progress.Report($"Migrated {migrationResult.PackagesMigrated} package(s) to PackageReference");
                     return new OperationResult { Success = true, Message = $"Migrated {migrationResult.PackagesMigrated} package(s)" };
                 }
-                return new OperationResult { Success = false, Message = migrationResult.Error };
+                return new OperationResult { Success = false, Message = migrationResult.Error ?? "Migration failed" };
             },
             "Migrating Project",
             $"Converting {project.Name} from packages.config to PackageReference",
