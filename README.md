@@ -8,7 +8,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![NuGet](https://img.shields.io/nuget/v/LazyNuGet?logo=nuget&color=004880)](https://www.nuget.org/packages/LazyNuGet)
-[![.NET](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-9.0%2B-purple.svg)](https://dotnet.microsoft.com/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/LazyNuGet?color=004880)](https://www.nuget.org/packages/LazyNuGet)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20|%20macOS%20|%20Windows-orange.svg)]()
 
 </div>
@@ -27,7 +28,7 @@ It helps others discover the project and motivates continued development.
 
 LazyNuGet brings a fast, keyboard-driven interface to NuGet package management. Navigate your projects, view package details, check for updates, and search NuGet.org—all without leaving the terminal.
 
-**Browse. Update. Search.**
+**Browse. Update. Search.** — **[Visit the project website](https://nickprotop.github.io/lazynuget/)**
 
 ![LazyNuGet Dashboard](.github/dashboard-overview.png)
 
