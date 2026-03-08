@@ -55,6 +55,9 @@ artifacts/
 .DS_Store
 Thumbs.db
 
+## IDE workspace
+.lazydotide.workspace
+
 ## Temporary files
 *.tmp
 *.temp
