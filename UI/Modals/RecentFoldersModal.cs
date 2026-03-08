@@ -4,10 +4,8 @@ using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
 using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
-using Spectre.Console;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -144,7 +142,7 @@ public class RecentFoldersModal : ModalBase<string?>
             var isCurrent = string.Equals(folder, _currentFolder, StringComparison.OrdinalIgnoreCase);
             var badge = isCurrent ? $" [{ColorScheme.SecondaryMarkup}]● current[/]" : "";
             var displayName = ShortenPath(folder);
-            var item = new ListItem($"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(displayName)}[/]{badge}");
+            var item = new ListItem($"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(displayName)}[/]{badge}");
             item.Tag = folder;
             _folderList?.AddItem(item);
         }

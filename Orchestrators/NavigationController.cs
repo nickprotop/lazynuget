@@ -1,10 +1,10 @@
 using SharpConsoleUI;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Core;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Components;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.Orchestrators;
 
@@ -279,7 +279,7 @@ public class NavigationController
             if (needHeaders)
             {
                 var headerName = group.Key ?? "(no solution)";
-                var header = new ListItem($"[grey50]── {Markup.Escape(headerName)} ──[/]");
+                var header = new ListItem($"[grey50]── {MarkupParser.Escape(headerName)} ──[/]");
                 header.Tag = null; // Non-selectable sentinel
                 _contextList?.AddItem(header);
             }
@@ -290,8 +290,8 @@ public class NavigationController
                     ? string.Join(" | ", project.TargetFrameworks)
                     : project.TargetFramework;
                 var legacyBadge = project.IsPackagesConfig ? "[grey50]legacy[/] " : string.Empty;
-                var displayText = $"{legacyBadge}[cyan1]{Markup.Escape(project.Name)}[/]\n" +
-                                $"[grey70]  📦 {project.Packages.Count} packages · {Markup.Escape(tfDisplay)}[/]";
+                var displayText = $"{legacyBadge}[cyan1]{MarkupParser.Escape(project.Name)}[/]\n" +
+                                $"[grey70]  📦 {project.Packages.Count} packages · {MarkupParser.Escape(tfDisplay)}[/]";
 
                 if (project.IsPackagesConfig)
                     displayText += $"\n[grey50]  packages.config — press Ctrl+M to migrate[/]";
@@ -310,7 +310,7 @@ public class NavigationController
         _contextList?.ClearItems();
         foreach (var package in packages)
         {
-            var displayText = $"[cyan1]{Markup.Escape(package.Id)}[/]\n" +
+            var displayText = $"[cyan1]{MarkupParser.Escape(package.Id)}[/]\n" +
                             $"[grey70]  {package.DisplayStatus}[/]";
 
             _contextList?.AddItem(new ListItem(displayText) { Tag = package });

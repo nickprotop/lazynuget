@@ -2,11 +2,9 @@ using SharpConsoleUI;
 using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Components;
 
@@ -33,9 +31,9 @@ public static class InteractiveDashboardBuilder
             ? string.Join(" | ", project.TargetFrameworks)
             : project.TargetFramework;
         var header = Controls.Markup()
-            .AddLine($"[cyan1 bold]Project: {Markup.Escape(project.Name)}[/]")
-            .AddLine($"[grey70]Path: {Markup.Escape(ShortenPath(project.FilePath))}[/]")
-            .AddLine($"[grey70]Framework: {Markup.Escape(frameworkDisplay)}[/]")
+            .AddLine($"[cyan1 bold]Project: {MarkupParser.Escape(project.Name)}[/]")
+            .AddLine($"[grey70]Path: {MarkupParser.Escape(ShortenPath(project.FilePath))}[/]")
+            .AddLine($"[grey70]Framework: {MarkupParser.Escape(frameworkDisplay)}[/]")
             .AddEmptyLine()
             .WithMargin(1, 1, 0, 0)
             .Build();
@@ -185,9 +183,9 @@ public static class InteractiveDashboardBuilder
         var vulnerable = project.VulnerableCount;
 
         return Controls.Table()
-            .AddColumn("📦 [cyan1]Total[/]", Spectre.Console.Justify.Center, 11)
-            .AddColumn("⚠ [yellow]Outdated[/]", Spectre.Console.Justify.Center, 11)
-            .AddColumn("✓ [grey70]Vuln[/]", Spectre.Console.Justify.Center, 11)
+            .AddColumn("📦 [cyan1]Total[/]", TextJustification.Center, 11)
+            .AddColumn("⚠ [yellow]Outdated[/]", TextJustification.Center, 11)
+            .AddColumn("✓ [grey70]Vuln[/]", TextJustification.Center, 11)
             .AddRow($"[cyan1 bold]{total}[/]", $"[yellow bold]{outdated}[/]", $"[red bold]{vulnerable}[/]")
             .WithBorderColor(Color.Grey50)
             .SingleLine()
@@ -228,7 +226,7 @@ public static class InteractiveDashboardBuilder
 
         foreach (var pkg in project.Packages)
         {
-            builder.AddItem(new ListItem(Markup.Escape(pkg.Id)) { Tag = pkg });
+            builder.AddItem(new ListItem(MarkupParser.Escape(pkg.Id)) { Tag = pkg });
         }
 
         var list = builder.Build();
@@ -252,8 +250,8 @@ public static class InteractiveDashboardBuilder
                 : pkg.Version;
             int versionVisibleWidth = versionText.Length;
             string versionMarkup = pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion)
-                ? $"[grey70]{Markup.Escape(pkg.Version)}[/] [yellow]→ {Markup.Escape(pkg.LatestVersion)}[/]"
-                : $"[grey70]{Markup.Escape(pkg.Version)}[/]";
+                ? $"[grey70]{MarkupParser.Escape(pkg.Version)}[/] [yellow]→ {MarkupParser.Escape(pkg.LatestVersion)}[/]"
+                : $"[grey70]{MarkupParser.Escape(pkg.Version)}[/]";
 
             int availableWidth = list.ActualWidth - listOverhead;
             // Name column gets whatever space remains after status prefix, version, and gap
@@ -262,10 +260,10 @@ public static class InteractiveDashboardBuilder
             // Cap at the longest package name — don't let the name column consume extra space
             nameColumnWidth = Math.Clamp(nameColumnWidth, 1, maxNameLength);
 
-            string name = Markup.Escape(pkg.Id);
+            string name = MarkupParser.Escape(pkg.Id);
             string paddedName = pkg.Id.Length <= nameColumnWidth
                 ? name.PadRight(nameColumnWidth)
-                : Markup.Escape(pkg.Id[..(nameColumnWidth - 1)]) + "…";
+                : MarkupParser.Escape(pkg.Id[..(nameColumnWidth - 1)]) + "…";
 
             return $"{statusPrefix}{paddedName} {versionMarkup}";
         };
@@ -364,9 +362,9 @@ public static class InteractiveDashboardBuilder
             ? string.Join(" | ", project.TargetFrameworks)
             : project.TargetFramework;
         var header = Controls.Markup()
-            .AddLine($"[cyan1 bold]Project: {Markup.Escape(project.Name)}[/] [grey50][legacy][/]")
-            .AddLine($"[grey70]Path: {Markup.Escape(ShortenPath(project.FilePath))}[/]")
-            .AddLine($"[grey70]Framework: {Markup.Escape(frameworkDisplay)}[/]")
+            .AddLine($"[cyan1 bold]Project: {MarkupParser.Escape(project.Name)}[/] [grey50][legacy][/]")
+            .AddLine($"[grey70]Path: {MarkupParser.Escape(ShortenPath(project.FilePath))}[/]")
+            .AddLine($"[grey70]Framework: {MarkupParser.Escape(frameworkDisplay)}[/]")
             .AddEmptyLine()
             .WithMargin(1, 1, 0, 0)
             .Build();
@@ -448,7 +446,7 @@ public static class InteractiveDashboardBuilder
 
             foreach (var pkg in project.Packages)
             {
-                listBuilder.AddItem(new ListItem($"[grey70]{Markup.Escape(pkg.Id)}[/] [grey50]{Markup.Escape(pkg.Version)}[/]"));
+                listBuilder.AddItem(new ListItem($"[grey70]{MarkupParser.Escape(pkg.Id)}[/] [grey50]{MarkupParser.Escape(pkg.Version)}[/]"));
             }
 
             controls.Add(listBuilder.Build());

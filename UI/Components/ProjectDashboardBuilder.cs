@@ -1,5 +1,5 @@
 using LazyNuGet.Models;
-using Spectre.Console;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Components;
 
@@ -15,8 +15,8 @@ public static class ProjectDashboardBuilder
         var lines = new List<string>();
 
         // Project header
-        lines.Add($"[cyan1 bold]Project: {Markup.Escape(project.Name)}[/]");
-        lines.Add($"[grey70]Path: {Markup.Escape(ShortenPath(project.FilePath))}[/]");
+        lines.Add($"[cyan1 bold]Project: {MarkupParser.Escape(project.Name)}[/]");
+        lines.Add($"[grey70]Path: {MarkupParser.Escape(ShortenPath(project.FilePath))}[/]");
         lines.Add($"[grey70]Framework: {project.TargetFramework}[/]");
         lines.Add("");
 
@@ -42,7 +42,7 @@ public static class ProjectDashboardBuilder
             foreach (var pkg in topPackages)
             {
                 var statusIndicator = pkg.IsOutdated ? "[yellow]⚠[/]" : "[green]✓[/]";
-                lines.Add($"{statusIndicator} [grey70]{Markup.Escape(pkg.Id)} {Markup.Escape(pkg.Version)}[/]");
+                lines.Add($"{statusIndicator} [grey70]{MarkupParser.Escape(pkg.Id)} {MarkupParser.Escape(pkg.Version)}[/]");
             }
 
             if (project.Packages.Count > 5)
@@ -58,8 +58,8 @@ public static class ProjectDashboardBuilder
             lines.Add("[yellow bold]Needs Attention:[/]");
             foreach (var pkg in outdatedPackages.Take(5))
             {
-                lines.Add($"[yellow]⚠ {Markup.Escape(pkg.Id)}[/]");
-                lines.Add($"  [grey70]{Markup.Escape(pkg.Version)} → {Markup.Escape(pkg.LatestVersion ?? "unknown")} available[/]");
+                lines.Add($"[yellow]⚠ {MarkupParser.Escape(pkg.Id)}[/]");
+                lines.Add($"  [grey70]{MarkupParser.Escape(pkg.Version)} → {MarkupParser.Escape(pkg.LatestVersion ?? "unknown")} available[/]");
             }
 
             if (outdatedPackages.Count > 5)

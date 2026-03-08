@@ -3,13 +3,11 @@ using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
 using AsyncHelper = LazyNuGet.Services.AsyncHelper;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -116,8 +114,8 @@ public class OperationProgressModal : ModalBase<OperationResult>
     {
         // Status message (compact for log viewer)
         _statusLabel = Controls.Markup()
-            .AddLine($"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(_title)}[/]")
-            .AddLine($"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_description)}[/]")
+            .AddLine($"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(_title)}[/]")
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]{MarkupParser.Escape(_description)}[/]")
             .WithMargin(2, 2, 2, 0)
             .Build();
 
@@ -188,7 +186,7 @@ public class OperationProgressModal : ModalBase<OperationResult>
             {
                 _statusLabel?.SetContent(new List<string> {
                     $"[{ColorScheme.ErrorMarkup} bold]Unexpected error[/]",
-                    $"[{ColorScheme.MutedMarkup}]{Markup.Escape(ex.Message)}[/]"
+                    $"[{ColorScheme.MutedMarkup}]{MarkupParser.Escape(ex.Message)}[/]"
                 });
             });
     }
@@ -209,7 +207,7 @@ public class OperationProgressModal : ModalBase<OperationResult>
                     // Add timestamped log line
                     var elapsed = DateTime.Now - _startTime;
                     var timestamp = $"[grey50]{elapsed.TotalSeconds:F1}s[/]";
-                    var logLine = $"{timestamp} [grey70]{Markup.Escape(line)}[/]";
+                    var logLine = $"{timestamp} [grey70]{MarkupParser.Escape(line)}[/]";
 
                     _logLines.Add(logLine);
 
@@ -227,28 +225,28 @@ public class OperationProgressModal : ModalBase<OperationResult>
                     if (line.Contains("Restoring packages") || line.Contains("Determining projects"))
                     {
                         _statusLabel?.SetContent(new List<string> {
-                            $"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(_title)}[/]",
+                            $"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(_title)}[/]",
                             $"[{ColorScheme.SecondaryMarkup}]📦 Restoring...[/]"
                         });
                     }
                     else if (line.Contains("Downloading") || line.Contains("GET"))
                     {
                         _statusLabel?.SetContent(new List<string> {
-                            $"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(_title)}[/]",
+                            $"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(_title)}[/]",
                             $"[{ColorScheme.SecondaryMarkup}]📥 Downloading...[/]"
                         });
                     }
                     else if (line.Contains("Installing") || line.Contains("Writing"))
                     {
                         _statusLabel?.SetContent(new List<string> {
-                            $"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(_title)}[/]",
+                            $"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(_title)}[/]",
                             $"[{ColorScheme.SecondaryMarkup}]📦 Installing...[/]"
                         });
                     }
                     else if (line.Contains("Generating") || line.Contains("Writing assets"))
                     {
                         _statusLabel?.SetContent(new List<string> {
-                            $"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(_title)}[/]",
+                            $"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(_title)}[/]",
                             $"[{ColorScheme.SecondaryMarkup}]📝 Finalizing...[/]"
                         });
                     }
@@ -286,16 +284,16 @@ public class OperationProgressModal : ModalBase<OperationResult>
                 {
                     _statusLabel?.SetContent(new List<string> {
                         $"[{ColorScheme.ErrorMarkup} bold]✗ Failed[/]",
-                        $"[{ColorScheme.MutedMarkup}]{Markup.Escape(result.Message ?? "Unknown error")}[/]"
+                        $"[{ColorScheme.MutedMarkup}]{MarkupParser.Escape(result.Message ?? "Unknown error")}[/]"
                     });
 
                     // Add error to log
-                    _logLines.Add($"[{ColorScheme.ErrorMarkup} bold]✗ Operation failed: {Markup.Escape(result.Message ?? "Unknown error")}[/]");
+                    _logLines.Add($"[{ColorScheme.ErrorMarkup} bold]✗ Operation failed: {MarkupParser.Escape(result.Message ?? "Unknown error")}[/]");
                     if (!string.IsNullOrEmpty(result.ErrorDetails))
                     {
                         foreach (var errorLine in result.ErrorDetails.Split('\n'))
                         {
-                            _logLines.Add($"[{ColorScheme.ErrorMarkup}]{Markup.Escape(errorLine)}[/]");
+                            _logLines.Add($"[{ColorScheme.ErrorMarkup}]{MarkupParser.Escape(errorLine)}[/]");
                         }
                     }
                     _logContent?.SetContent(new List<string> { string.Join("\n", _logLines) });
@@ -367,16 +365,16 @@ public class OperationProgressModal : ModalBase<OperationResult>
             {
                 _statusLabel?.SetContent(new List<string> {
                     $"[{ColorScheme.ErrorMarkup} bold]✗ Error after {duration.TotalSeconds:F1}s[/]",
-                    $"[{ColorScheme.MutedMarkup}]{Markup.Escape(ex.Message)}[/]"
+                    $"[{ColorScheme.MutedMarkup}]{MarkupParser.Escape(ex.Message)}[/]"
                 });
 
                 // Add error to log
-                _logLines.Add($"[{ColorScheme.ErrorMarkup} bold]✗ Unexpected error: {Markup.Escape(ex.Message)}[/]");
+                _logLines.Add($"[{ColorScheme.ErrorMarkup} bold]✗ Unexpected error: {MarkupParser.Escape(ex.Message)}[/]");
                 if (ex.StackTrace != null)
                 {
                     foreach (var stackLine in ex.StackTrace.Split('\n'))
                     {
-                        _logLines.Add($"[{ColorScheme.MutedMarkup}]{Markup.Escape(stackLine)}[/]");
+                        _logLines.Add($"[{ColorScheme.MutedMarkup}]{MarkupParser.Escape(stackLine)}[/]");
                     }
                 }
                 _logContent?.SetContent(new List<string> { string.Join("\n", _logLines) });

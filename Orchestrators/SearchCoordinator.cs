@@ -5,7 +5,6 @@ using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Modals;
 using LazyNuGet.UI.Utilities;
-using Spectre.Console;
 
 namespace LazyNuGet.Orchestrators;
 

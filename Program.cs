@@ -1,6 +1,7 @@
 using System.Reflection;
 using SharpConsoleUI;
 using SharpConsoleUI.Configuration;
+using SharpConsoleUI.Helpers;
 using SharpConsoleUI.Drivers;
 using LazyNuGet.Services;
 
@@ -152,8 +153,8 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Fatal error: {ex.Message}");
-            Console.Error.WriteLine(ex.StackTrace);
+            Console.Clear();
+            ExceptionFormatter.WriteException(ex);
             return 1;
         }
     }

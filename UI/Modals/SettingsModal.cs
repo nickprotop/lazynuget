@@ -4,12 +4,10 @@ using SharpConsoleUI.Controls;
 using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -161,8 +159,8 @@ public class SettingsModal : ModalBase<bool>
                 : $"[{ColorScheme.PrimaryMarkup}]Custom[/]";
             var authBadge = source.RequiresAuth ? " [yellow]Auth[/]" : "";
 
-            var text = $"[cyan1]{Markup.Escape(source.Name)}[/]  {enabledBadge}  {originLabel}{authBadge}\n" +
-                      $"[grey50]  {Markup.Escape(source.Url)}[/]";
+            var text = $"[cyan1]{MarkupParser.Escape(source.Name)}[/]  {enabledBadge}  {originLabel}{authBadge}\n" +
+                      $"[grey50]  {MarkupParser.Escape(source.Url)}[/]";
 
             var item = new ListItem(text);
             item.Tag = source;
@@ -178,8 +176,8 @@ public class SettingsModal : ModalBase<bool>
                     string.Equals(s.Name, cs.Name, StringComparison.OrdinalIgnoreCase))))
             {
                 var enabledBadge = custom.IsEnabled ? "[green]Enabled[/]" : "[grey50]Disabled[/]";
-                var text = $"[cyan1]{Markup.Escape(custom.Name)}[/]  {enabledBadge}  [{ColorScheme.PrimaryMarkup}]Custom[/]\n" +
-                          $"[grey50]  {Markup.Escape(custom.Url)}[/]";
+                var text = $"[cyan1]{MarkupParser.Escape(custom.Name)}[/]  {enabledBadge}  [{ColorScheme.PrimaryMarkup}]Custom[/]\n" +
+                          $"[grey50]  {MarkupParser.Escape(custom.Url)}[/]";
                 var item = new ListItem(text);
                 item.Tag = custom;
                 _contentList?.AddItem(item);
@@ -203,7 +201,7 @@ public class SettingsModal : ModalBase<bool>
         var configDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "LazyNuGet");
-        _contentList?.AddItem(new ListItem($"[grey70]  Config: {Markup.Escape(configDir)}[/]"));
+        _contentList?.AddItem(new ListItem($"[grey70]  Config: {MarkupParser.Escape(configDir)}[/]"));
         _contentList?.AddItem(new ListItem(""));
 
         // NuGet.config file locations
@@ -213,7 +211,7 @@ public class SettingsModal : ModalBase<bool>
         {
             foreach (var path in configPaths)
             {
-                _contentList?.AddItem(new ListItem($"[grey70]  {Markup.Escape(path)}[/]"));
+                _contentList?.AddItem(new ListItem($"[grey70]  {MarkupParser.Escape(path)}[/]"));
             }
         }
         else
@@ -228,7 +226,7 @@ public class SettingsModal : ModalBase<bool>
         {
             foreach (var folder in settings.RecentFolders)
             {
-                _contentList?.AddItem(new ListItem($"[grey70]  {Markup.Escape(folder)}[/]"));
+                _contentList?.AddItem(new ListItem($"[grey70]  {MarkupParser.Escape(folder)}[/]"));
             }
         }
         else

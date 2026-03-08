@@ -1,5 +1,5 @@
 using LazyNuGet.Models;
-using Spectre.Console;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Components;
 
@@ -14,8 +14,8 @@ public static class PackageDetailsBuilder
         var lines = new List<string>();
 
         // Package header
-        lines.Add($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]");
-        lines.Add($"[grey70]Installed: {Markup.Escape(package.Version)}[/]");
+        lines.Add($"[cyan1 bold]Package: {MarkupParser.Escape(package.Id)}[/]");
+        lines.Add($"[grey70]Installed: {MarkupParser.Escape(package.Version)}[/]");
         lines.Add("");
 
         // Status section
@@ -28,7 +28,7 @@ public static class PackageDetailsBuilder
         if (package.IsOutdated && !string.IsNullOrEmpty(package.LatestVersion))
         {
             lines.Add($"[yellow bold]Update Available[/]");
-            lines.Add($"[grey70]Latest Version: {Markup.Escape(package.LatestVersion)}[/]");
+            lines.Add($"[grey70]Latest Version: {MarkupParser.Escape(package.LatestVersion)}[/]");
             lines.Add("");
         }
         else if (!package.IsOutdated)
@@ -43,7 +43,7 @@ public static class PackageDetailsBuilder
             if (!string.IsNullOrEmpty(nugetData.Description))
             {
                 lines.Add($"[grey70 bold]Description:[/]");
-                lines.Add($"[grey70]{Markup.Escape(WrapText(nugetData.Description, 50))}[/]");
+                lines.Add($"[grey70]{MarkupParser.Escape(WrapText(nugetData.Description, 50))}[/]");
                 lines.Add("");
             }
 
@@ -59,7 +59,7 @@ public static class PackageDetailsBuilder
 
             if (!string.IsNullOrEmpty(nugetData.ProjectUrl))
             {
-                lines.Add($"[grey70]Project URL: {Markup.Escape(nugetData.ProjectUrl)}[/]");
+                lines.Add($"[grey70]Project URL: {MarkupParser.Escape(nugetData.ProjectUrl)}[/]");
             }
 
             if (nugetData.Versions.Any())
@@ -69,7 +69,7 @@ public static class PackageDetailsBuilder
                 foreach (var version in nugetData.Versions.Take(5))
                 {
                     var indicator = version == package.Version ? "◄ installed" : "";
-                    lines.Add($"[grey70]{Markup.Escape(version)} {indicator}[/]");
+                    lines.Add($"[grey70]{MarkupParser.Escape(version)} {indicator}[/]");
                 }
                 if (nugetData.Versions.Count > 5)
                 {

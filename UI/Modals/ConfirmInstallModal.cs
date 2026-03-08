@@ -3,10 +3,9 @@ using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -129,7 +128,7 @@ public class ConfirmInstallModal : ModalBase<bool>
         {
             Modal.AddControl(Controls.Markup()
                 .AddLine($"[orange1 bold]⚠ COMPATIBILITY WARNING[/]")
-                .AddLine($"[yellow]{Markup.Escape(_compatibilityWarningMessage)}[/]")
+                .AddLine($"[yellow]{MarkupParser.Escape(_compatibilityWarningMessage)}[/]")
                 .WithAlignment(HorizontalAlignment.Center)
                 .WithMargin(1, 1, 1, 0)
                 .Build());
@@ -137,13 +136,13 @@ public class ConfirmInstallModal : ModalBase<bool>
 
         // Message body
         Modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_message)}[/]")
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]{MarkupParser.Escape(_message)}[/]")
             .WithAlignment(HorizontalAlignment.Center)
             .WithMargin(1, 1, 1, 1)
             .Build());
 
         // Package info
-        var packageInfo = $"[{ColorScheme.MutedMarkup}]Package: {Markup.Escape(_package.Id)} v{Markup.Escape(_package.Version)}[/]";
+        var packageInfo = $"[{ColorScheme.MutedMarkup}]Package: {MarkupParser.Escape(_package.Id)} v{MarkupParser.Escape(_package.Version)}[/]";
         if (_package.IsDeprecated)
         {
             packageInfo = $"[orange1]⚠ DEPRECATED[/] {packageInfo}";
@@ -226,7 +225,7 @@ public class ConfirmInstallModal : ModalBase<bool>
                 ? ""
                 : $" [{ColorScheme.MutedMarkup}]({FormatVersionRange(dep.VersionRange)})[/]";
 
-            markupBuilder.AddLine($"[{ColorScheme.MutedMarkup}]{branch}[/] {Markup.Escape(dep.Id)}{versionText}");
+            markupBuilder.AddLine($"[{ColorScheme.MutedMarkup}]{branch}[/] {MarkupParser.Escape(dep.Id)}{versionText}");
         }
 
         // Show "... and X more" if there are more than 5 dependencies
@@ -332,7 +331,7 @@ public class ConfirmInstallModal : ModalBase<bool>
         }
 
         // Just escape and return as-is for complex ranges
-        return Markup.Escape(range);
+        return MarkupParser.Escape(range);
     }
 
     /// <summary>

@@ -1,7 +1,7 @@
 using SharpConsoleUI.Controls;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI.Utilities;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.Orchestrators;
 
@@ -68,7 +68,7 @@ public class StatusBarManager
         if (string.IsNullOrEmpty(folderName)) folderName = _currentFolderPath;
         _topStatusLeft?.SetContent(new List<string>
         {
-            $"[cyan1]{Markup.Escape(folderName)}[/] [grey50]({Markup.Escape(_currentFolderPath)})[/] [grey50](Esc: Exit)[/]"
+            $"[cyan1]{MarkupParser.Escape(folderName)}[/] [grey50]({MarkupParser.Escape(_currentFolderPath)})[/] [grey50](Esc: Exit)[/]"
         });
     }
 
@@ -80,7 +80,7 @@ public class StatusBarManager
         var legacyBadge = project.IsPackagesConfig  ? " [grey50][legacy][/]" : string.Empty;
         _topStatusLeft?.SetContent(new List<string>
         {
-            $"[grey50]{Markup.Escape(folderName)}[/] [grey50]>[/] [cyan1]{Markup.Escape(project.Name)}[/]{cpmBadge}{legacyBadge} [grey50]> Packages[/] [grey50](Esc: Back)[/]"
+            $"[grey50]{MarkupParser.Escape(folderName)}[/] [grey50]>[/] [cyan1]{MarkupParser.Escape(project.Name)}[/]{cpmBadge}{legacyBadge} [grey50]> Packages[/] [grey50](Esc: Back)[/]"
         });
     }
 
@@ -96,7 +96,7 @@ public class StatusBarManager
     {
         _leftPanelHeader?.SetContent(new List<string>
         {
-            $"[grey70]{Markup.Escape(project.Name)} > Packages[/]"
+            $"[grey70]{MarkupParser.Escape(project.Name)} > Packages[/]"
         });
         UpdateRightPanelHeader("Details");
     }

@@ -1,3 +1,5 @@
+using SharpConsoleUI.Parsing;
+
 namespace LazyNuGet.Models;
 
 /// <summary>
@@ -51,8 +53,8 @@ public class PackageReference
         get
         {
             if (HasVulnerability) return "[red]⚠ VULNERABLE[/]";
-            if (IsOutdated) return $"[yellow]⚠ {Spectre.Console.Markup.Escape(Version)} → {Spectre.Console.Markup.Escape(LatestVersion ?? "")}[/]";
-            return $"[green]✓ {Spectre.Console.Markup.Escape(Version)} (latest)[/]";
+            if (IsOutdated) return $"[yellow]⚠ {MarkupParser.Escape(Version)} → {MarkupParser.Escape(LatestVersion ?? "")}[/]";
+            return $"[green]✓ {MarkupParser.Escape(Version)} (latest)[/]";
         }
     }
 }

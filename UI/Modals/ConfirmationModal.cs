@@ -3,9 +3,8 @@ using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -56,14 +55,14 @@ public class ConfirmationModal : ModalBase<bool>
     {
         // Title header
         Modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(_title)}[/]")
+            .AddLine($"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(_title)}[/]")
             .WithAlignment(HorizontalAlignment.Center)
             .WithMargin(1, 1, 0, 0)
             .Build());
 
         // Message body
         Modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_message)}[/]")
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]{MarkupParser.Escape(_message)}[/]")
             .WithAlignment(HorizontalAlignment.Center)
             .WithMargin(1, 1, 1, 1)
             .Build());

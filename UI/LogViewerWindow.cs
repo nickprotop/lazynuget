@@ -3,10 +3,8 @@ using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
 using SharpConsoleUI.Logging;
-using Spectre.Console;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI;
 
@@ -110,7 +108,7 @@ public class LogViewerWindow
 
         var timestamp = entry.Timestamp.ToString("HH:mm:ss.fff");
         var category = !string.IsNullOrEmpty(entry.Category) ? $"[{entry.Category}]" : "";
-        return $"[grey50]{timestamp}[/] [{levelColor}]{entry.Level,-11}[/] [grey70]{category,-12}[/] [{levelColor}]{Markup.Escape(entry.Message)}[/]";
+        return $"[grey50]{timestamp}[/] [{levelColor}]{entry.Level,-11}[/] [grey70]{category,-12}[/] [{levelColor}]{MarkupParser.Escape(entry.Message)}[/]";
     }
 
     private void RefreshLogDisplay()

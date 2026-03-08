@@ -4,14 +4,12 @@ using SharpConsoleUI.Controls;
 using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Repositories;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
 using AsyncHelper = LazyNuGet.Services.AsyncHelper;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -470,11 +468,11 @@ public class OperationHistoryModal : ModalBase<bool>
             var batchIndicator = isBatchOperation ? "📦 " : "";
             var undoHint = (entry.Type == OperationType.Update && !string.IsNullOrEmpty(entry.PreviousVersion) && entry.Success)
                 ? $" [{ColorScheme.MutedMarkup}](undo available)[/]" : "";
-            var text = $"[{statusColor}]{statusIcon}[/] {icon} {batchIndicator}[{ColorScheme.PrimaryMarkup}]{Markup.Escape(entry.Description)}[/] [{ColorScheme.MutedMarkup}]({durationText}) - {timeAgo}[/]{undoHint}";
+            var text = $"[{statusColor}]{statusIcon}[/] {icon} {batchIndicator}[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(entry.Description)}[/] [{ColorScheme.MutedMarkup}]({durationText}) - {timeAgo}[/]{undoHint}";
 
             if (!entry.Success && !string.IsNullOrEmpty(entry.ErrorMessage))
             {
-                text += $"\n    [{ColorScheme.ErrorMarkup}]{Markup.Escape(entry.ErrorMessage)}[/]";
+                text += $"\n    [{ColorScheme.ErrorMarkup}]{MarkupParser.Escape(entry.ErrorMessage)}[/]";
             }
 
             var listItem = new ListItem(text);

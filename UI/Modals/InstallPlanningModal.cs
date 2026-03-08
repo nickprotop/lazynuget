@@ -3,11 +3,9 @@ using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -141,14 +139,14 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
     {
         // Package header
         var headerBuilder = Controls.Markup()
-            .AddLine($"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(_package.Id)}[/] [{ColorScheme.SecondaryMarkup}]v{Markup.Escape(_package.Version)}[/]");
+            .AddLine($"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(_package.Id)}[/] [{ColorScheme.SecondaryMarkup}]v{MarkupParser.Escape(_package.Version)}[/]");
 
         if (!string.IsNullOrEmpty(_package.Description))
         {
             var desc = _package.Description.Length > 80
                 ? _package.Description.Substring(0, 77) + "..."
                 : _package.Description;
-            headerBuilder.AddLine($"[{ColorScheme.MutedMarkup}]{Markup.Escape(desc)}[/]");
+            headerBuilder.AddLine($"[{ColorScheme.MutedMarkup}]{MarkupParser.Escape(desc)}[/]");
         }
 
         if (_package.TotalDownloads > 0 || _package.Published.HasValue)
@@ -170,7 +168,7 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
 
         if (_package.IsDeprecated)
         {
-            headerBuilder.AddLine($"[orange1]DEPRECATED{(string.IsNullOrEmpty(_package.DeprecationMessage) ? "" : $": {Markup.Escape(_package.DeprecationMessage)}")}[/]");
+            headerBuilder.AddLine($"[orange1]DEPRECATED{(string.IsNullOrEmpty(_package.DeprecationMessage) ? "" : $": {MarkupParser.Escape(_package.DeprecationMessage)}")}[/]");
         }
 
         Modal.AddControl(headerBuilder.WithMargin(2, 1, 2, 0).Build());
@@ -282,8 +280,8 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
                 var checkbox = entry.IsSelected ? "[green][ x ][/]" : "[grey50][   ][/]";
                 var warningText = !string.IsNullOrEmpty(entry.CompatibilityWarning)
                     ? $" [yellow]![/]" : "";
-                var displayText = $"  {checkbox} [{ColorScheme.PrimaryMarkup}]{Markup.Escape(entry.Project.Name)}[/]{warningText}\n" +
-                                  $"        [{ColorScheme.MutedMarkup}]{Markup.Escape(entry.Project.TargetFramework)}[/]";
+                var displayText = $"  {checkbox} [{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(entry.Project.Name)}[/]{warningText}\n" +
+                                  $"        [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(entry.Project.TargetFramework)}[/]";
                 var item = new ListItem(displayText);
                 item.Tag = entry;
                 _projectList?.AddItem(item);
@@ -299,8 +297,8 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
 
             foreach (var entry in installed)
             {
-                var displayText = $"  [{ColorScheme.MutedMarkup}]---[/] [{ColorScheme.MutedMarkup}]{Markup.Escape(entry.Project.Name)}[/]\n" +
-                                  $"        [{ColorScheme.MutedMarkup}]v{Markup.Escape(entry.InstalledVersion ?? "?")} installed | {Markup.Escape(entry.Project.TargetFramework)}[/]";
+                var displayText = $"  [{ColorScheme.MutedMarkup}]---[/] [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(entry.Project.Name)}[/]\n" +
+                                  $"        [{ColorScheme.MutedMarkup}]v{MarkupParser.Escape(entry.InstalledVersion ?? "?")} installed | {MarkupParser.Escape(entry.Project.TargetFramework)}[/]";
                 var item = new ListItem(displayText);
                 item.Tag = entry;
                 _projectList?.AddItem(item);
@@ -316,8 +314,8 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
 
             foreach (var entry in incompatible)
             {
-                var displayText = $"  [{ColorScheme.MutedMarkup}]---[/] [{ColorScheme.MutedMarkup}]{Markup.Escape(entry.Project.Name)}[/]\n" +
-                                  $"        [red]{Markup.Escape(entry.Project.TargetFramework)} - incompatible[/]";
+                var displayText = $"  [{ColorScheme.MutedMarkup}]---[/] [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(entry.Project.Name)}[/]\n" +
+                                  $"        [red]{MarkupParser.Escape(entry.Project.TargetFramework)} - incompatible[/]";
                 var item = new ListItem(displayText);
                 item.Tag = entry;
                 _projectList?.AddItem(item);

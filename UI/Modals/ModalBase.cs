@@ -2,7 +2,6 @@ using SharpConsoleUI;
 using SharpConsoleUI.Builders;
 using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
-using Spectre.Console;
 using LazyNuGet.UI.Utilities;
 
 namespace LazyNuGet.UI.Modals;

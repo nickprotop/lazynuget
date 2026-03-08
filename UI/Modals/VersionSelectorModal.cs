@@ -4,11 +4,9 @@ using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
 using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -76,8 +74,8 @@ public class VersionSelectorModal : ModalBase<string?>
         // ── Header ────────────────────────────────────────────
         var header = Controls.Markup()
             .AddLine($"[{ColorScheme.PrimaryMarkup} bold]Select Version[/]")
-            .AddLine($"[{ColorScheme.SecondaryMarkup}]Choose a version for {Markup.Escape(_package.Id)}[/]")
-            .AddLine($"[{ColorScheme.MutedMarkup}]Current version: {Markup.Escape(_package.Version)}[/]")
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]Choose a version for {MarkupParser.Escape(_package.Id)}[/]")
+            .AddLine($"[{ColorScheme.MutedMarkup}]Current version: {MarkupParser.Escape(_package.Version)}[/]")
             .WithMargin(2, 2, 2, 0)
             .Build();
 
@@ -408,7 +406,7 @@ public class VersionSelectorModal : ModalBase<string?>
         var badgeText = badges.Any() ? " " + string.Join(" ", badges) : "";
         var icon = isPreRelease ? "🔶" : "📦";
 
-        return $"{icon} [{ColorScheme.PrimaryMarkup}]{Markup.Escape(version)}[/]{badgeText}";
+        return $"{icon} [{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(version)}[/]{badgeText}";
     }
 
     private void HandleSelect()

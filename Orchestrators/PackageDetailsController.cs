@@ -2,11 +2,11 @@ using SharpConsoleUI;
 using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drawing;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Components;
 using LazyNuGet.UI.Utilities;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.Orchestrators;
 
@@ -184,8 +184,8 @@ public class PackageDetailsController : IDisposable
 
         // Package header
         var header = Controls.Markup()
-            .AddLine($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]")
-            .AddLine($"[grey70]Installed: {Markup.Escape(package.Version)}[/]")
+            .AddLine($"[cyan1 bold]Package: {MarkupParser.Escape(package.Id)}[/]")
+            .AddLine($"[grey70]Installed: {MarkupParser.Escape(package.Version)}[/]")
             .AddEmptyLine()
             .WithMargin(1, 1, 0, 0)
             .Build();

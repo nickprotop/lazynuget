@@ -2,10 +2,9 @@ using SharpConsoleUI;
 using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Components;
 
@@ -38,8 +37,8 @@ public static class InteractivePackageDetailsBuilder
         var legacyTag = isLegacyProject ? " [grey50][legacy][/]" : string.Empty;
 
         var header = Controls.Markup()
-            .AddLine($"[cyan1 bold]Package: {Markup.Escape(package.Id)}[/]{legacyTag}")
-            .AddLine($"[grey70]Installed: {Markup.Escape(package.Version)}[/]{versionSourceTag}")
+            .AddLine($"[cyan1 bold]Package: {MarkupParser.Escape(package.Id)}[/]{legacyTag}")
+            .AddLine($"[grey70]Installed: {MarkupParser.Escape(package.Version)}[/]{versionSourceTag}")
             .AddEmptyLine()
             .WithMargin(1, 1, 0, 0)
             .Build();
@@ -159,7 +158,7 @@ public static class InteractivePackageDetailsBuilder
         if (package.IsOutdated && !string.IsNullOrEmpty(package.LatestVersion))
         {
             builder.AddLine($"[yellow bold]Update Available[/]");
-            builder.AddLine($"[grey70]Latest Version: {Markup.Escape(package.LatestVersion)}[/]");
+            builder.AddLine($"[grey70]Latest Version: {MarkupParser.Escape(package.LatestVersion)}[/]");
             builder.AddEmptyLine();
         }
         else if (!package.IsOutdated)
@@ -218,16 +217,16 @@ public static class InteractivePackageDetailsBuilder
         {
             builder.AddLine($"[red bold]⚠ DEPRECATED[/]");
             if (!string.IsNullOrEmpty(nugetData.DeprecationMessage))
-                builder.AddLine($"[yellow]{Markup.Escape(nugetData.DeprecationMessage)}[/]");
+                builder.AddLine($"[yellow]{MarkupParser.Escape(nugetData.DeprecationMessage)}[/]");
             if (!string.IsNullOrEmpty(nugetData.AlternatePackageId))
-                builder.AddLine($"[grey70]Alternative: {Markup.Escape(nugetData.AlternatePackageId)}[/]");
+                builder.AddLine($"[grey70]Alternative: {MarkupParser.Escape(nugetData.AlternatePackageId)}[/]");
             builder.AddEmptyLine();
         }
 
         // Prerelease hint
         if (package.HasNewerPrerelease && !string.IsNullOrEmpty(package.LatestPrereleaseVersion))
         {
-            builder.AddLine($"[grey50]Prerelease available: {Markup.Escape(package.LatestPrereleaseVersion)}[/]");
+            builder.AddLine($"[grey50]Prerelease available: {MarkupParser.Escape(package.LatestPrereleaseVersion)}[/]");
             builder.AddEmptyLine();
         }
 
@@ -235,7 +234,7 @@ public static class InteractivePackageDetailsBuilder
         if (!string.IsNullOrEmpty(nugetData.Description))
         {
             builder.AddLine($"[grey70 bold]Description:[/]");
-            builder.AddLine($"[grey70]{Markup.Escape(nugetData.Description)}[/]");
+            builder.AddLine($"[grey70]{MarkupParser.Escape(nugetData.Description)}[/]");
             builder.AddEmptyLine();
         }
 
@@ -243,14 +242,14 @@ public static class InteractivePackageDetailsBuilder
         if (nugetData.Authors.Any())
         {
             var authors = string.Join(", ", nugetData.Authors);
-            builder.AddLine($"[grey70]Authors: {Markup.Escape(authors)}[/]");
+            builder.AddLine($"[grey70]Authors: {MarkupParser.Escape(authors)}[/]");
         }
 
         // License
         if (!string.IsNullOrEmpty(nugetData.LicenseExpression))
-            builder.AddLine($"[grey70]License: {Markup.Escape(nugetData.LicenseExpression)}[/]");
+            builder.AddLine($"[grey70]License: {MarkupParser.Escape(nugetData.LicenseExpression)}[/]");
         else if (!string.IsNullOrEmpty(nugetData.LicenseUrl))
-            builder.AddLine($"[grey70]License: {Markup.Escape(nugetData.LicenseUrl)}[/]");
+            builder.AddLine($"[grey70]License: {MarkupParser.Escape(nugetData.LicenseUrl)}[/]");
 
         // Downloads
         if (nugetData.TotalDownloads > 0)
@@ -268,27 +267,27 @@ public static class InteractivePackageDetailsBuilder
         if (nugetData.Tags.Any())
         {
             var tags = string.Join(", ", nugetData.Tags);
-            builder.AddLine($"[grey70]Tags: {Markup.Escape(tags)}[/]");
+            builder.AddLine($"[grey70]Tags: {MarkupParser.Escape(tags)}[/]");
         }
 
         // Target Frameworks (merged from Details tab)
         if (nugetData.TargetFrameworks.Any())
         {
             var frameworks = string.Join(", ", nugetData.TargetFrameworks);
-            builder.AddLine($"[grey70]Target Frameworks: {Markup.Escape(frameworks)}[/]");
+            builder.AddLine($"[grey70]Target Frameworks: {MarkupParser.Escape(frameworks)}[/]");
         }
 
         // URLs (merged from Details tab)
         if (!string.IsNullOrEmpty(nugetData.ProjectUrl))
-            builder.AddLine($"[grey70]Project URL: {Markup.Escape(nugetData.ProjectUrl)}[/]");
+            builder.AddLine($"[grey70]Project URL: {MarkupParser.Escape(nugetData.ProjectUrl)}[/]");
         if (!string.IsNullOrEmpty(nugetData.RepositoryUrl))
-            builder.AddLine($"[grey70]Repository: {Markup.Escape(nugetData.RepositoryUrl)}[/]");
+            builder.AddLine($"[grey70]Repository: {MarkupParser.Escape(nugetData.RepositoryUrl)}[/]");
 
         // Version summary
         if (package.IsOutdated && !string.IsNullOrEmpty(package.LatestVersion))
         {
             builder.AddEmptyLine();
-            builder.AddLine($"[yellow]Installed:[/] [grey70]{Markup.Escape(package.Version)}[/]  [yellow]Latest:[/] [grey70]{Markup.Escape(package.LatestVersion)}[/]");
+            builder.AddLine($"[yellow]Installed:[/] [grey70]{MarkupParser.Escape(package.Version)}[/]  [yellow]Latest:[/] [grey70]{MarkupParser.Escape(package.LatestVersion)}[/]");
         }
 
         builder.AddEmptyLine();
@@ -317,7 +316,7 @@ public static class InteractivePackageDetailsBuilder
         builder.AddEmptyLine();
 
         // Root: package name
-        builder.AddLine($"[cyan1 bold]{Markup.Escape(nugetData.Id)}[/] [grey70]{Markup.Escape(nugetData.Version)}[/]");
+        builder.AddLine($"[cyan1 bold]{MarkupParser.Escape(nugetData.Id)}[/] [grey70]{MarkupParser.Escape(nugetData.Version)}[/]");
 
         // Render tree structure
         for (var gi = 0; gi < nugetData.Dependencies.Count; gi++)
@@ -328,7 +327,7 @@ public static class InteractivePackageDetailsBuilder
             var groupPipe = isLastGroup ? Blank : Pipe;
 
             var fwLabel = string.IsNullOrEmpty(group.TargetFramework) ? "(any)" : group.TargetFramework;
-            builder.AddLine($"[grey50]{groupGuide}[/][green]{Markup.Escape(fwLabel)}[/] [grey50]({group.Packages.Count})[/]");
+            builder.AddLine($"[grey50]{groupGuide}[/][green]{MarkupParser.Escape(fwLabel)}[/] [grey50]({group.Packages.Count})[/]");
 
             if (group.Packages.Count == 0)
             {
@@ -342,7 +341,7 @@ public static class InteractivePackageDetailsBuilder
                     var isLastDep = di == group.Packages.Count - 1;
                     var depGuide = isLastDep ? Last : Branch;
                     var versionInfo = string.IsNullOrEmpty(dep.VersionRange) ? "" : $" [grey50]({dep.VersionRange})[/]";
-                    builder.AddLine($"[grey50]{groupPipe}{depGuide}[/][grey70]{Markup.Escape(dep.Id)}[/]{versionInfo}");
+                    builder.AddLine($"[grey50]{groupPipe}{depGuide}[/][grey70]{MarkupParser.Escape(dep.Id)}[/]{versionInfo}");
                 }
             }
         }
@@ -380,11 +379,11 @@ public static class InteractivePackageDetailsBuilder
         foreach (var version in recentVersions)
         {
             if (version == installedVersion)
-                builder.AddLine($"[cyan1 bold]{Markup.Escape(version)}[/] [green]◄ installed[/]");
+                builder.AddLine($"[cyan1 bold]{MarkupParser.Escape(version)}[/] [green]◄ installed[/]");
             else if (version == nugetData.Version)
-                builder.AddLine($"[yellow]{Markup.Escape(version)}[/] [grey50](latest)[/]");
+                builder.AddLine($"[yellow]{MarkupParser.Escape(version)}[/] [grey50](latest)[/]");
             else
-                builder.AddLine($"[grey70]{Markup.Escape(version)}[/]");
+                builder.AddLine($"[grey70]{MarkupParser.Escape(version)}[/]");
         }
 
         // If installed version is not in recent versions, show it separately
@@ -392,7 +391,7 @@ public static class InteractivePackageDetailsBuilder
         {
             builder.AddEmptyLine();
             builder.AddLine("[grey50]─────────────[/]");
-            builder.AddLine($"[cyan1 bold]{Markup.Escape(installedVersion)}[/] [green]◄ installed[/]");
+            builder.AddLine($"[cyan1 bold]{MarkupParser.Escape(installedVersion)}[/] [green]◄ installed[/]");
             builder.AddLine("[grey50]─────────────[/]");
         }
 
@@ -416,8 +415,8 @@ public static class InteractivePackageDetailsBuilder
         if (package.IsOutdated && !string.IsNullOrEmpty(package.LatestVersion))
         {
             builder.AddLine($"[grey70 bold]Version Comparison:[/]");
-            builder.AddLine($"[grey70]Installed:[/] [yellow]{Markup.Escape(package.Version)}[/]");
-            builder.AddLine($"[grey70]Latest:[/]    [green]{Markup.Escape(package.LatestVersion)}[/]");
+            builder.AddLine($"[grey70]Installed:[/] [yellow]{MarkupParser.Escape(package.Version)}[/]");
+            builder.AddLine($"[grey70]Latest:[/]    [green]{MarkupParser.Escape(package.LatestVersion)}[/]");
             builder.AddEmptyLine();
 
             // Simple breaking change heuristic based on semver major version diff
@@ -447,7 +446,7 @@ public static class InteractivePackageDetailsBuilder
         if (!string.IsNullOrEmpty(nugetData.ReleaseNotes))
         {
             builder.AddLine($"[grey70 bold]Release Notes:[/]");
-            builder.AddLine($"[grey70]{Markup.Escape(nugetData.ReleaseNotes)}[/]");
+            builder.AddLine($"[grey70]{MarkupParser.Escape(nugetData.ReleaseNotes)}[/]");
         }
         else
         {
@@ -484,9 +483,9 @@ public static class InteractivePackageDetailsBuilder
                 _          => "grey70"
             };
             var severity = string.IsNullOrEmpty(vuln.Severity) ? "Unknown" : vuln.Severity;
-            builder.AddLine($"[{severityColor}]● {Markup.Escape(severity)}[/]");
+            builder.AddLine($"[{severityColor}]● {MarkupParser.Escape(severity)}[/]");
             if (!string.IsNullOrEmpty(vuln.AdvisoryUrl))
-                builder.AddLine($"[grey70]  {Markup.Escape(vuln.AdvisoryUrl)}[/]");
+                builder.AddLine($"[grey70]  {MarkupParser.Escape(vuln.AdvisoryUrl)}[/]");
             builder.AddEmptyLine();
         }
 
@@ -588,7 +587,7 @@ public static class InteractivePackageDetailsBuilder
         // Migrate button (only for deprecated packages with an alternate)
         if (onMigrate != null && nugetData?.IsDeprecated == true && !string.IsNullOrEmpty(nugetData.AlternatePackageId))
         {
-            var migrateBtn = Controls.Button($"[yellow]Migrate → {Markup.Escape(nugetData.AlternatePackageId)}[/]")
+            var migrateBtn = Controls.Button($"[yellow]Migrate → {MarkupParser.Escape(nugetData.AlternatePackageId)}[/]")
                 .OnClick((s, e) => onMigrate())
                 .WithBackgroundColor(Color.Grey30)
                 .WithForegroundColor(Color.Grey93)

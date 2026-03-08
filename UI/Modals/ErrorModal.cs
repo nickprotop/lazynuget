@@ -3,10 +3,8 @@ using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.UI.Utilities;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -63,14 +61,14 @@ public class ErrorModal : ModalBase<bool>
     {
         // Error icon + title
         Modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.ErrorMarkup} bold]⚠ {Markup.Escape(_title)}[/]")
+            .AddLine($"[{ColorScheme.ErrorMarkup} bold]⚠ {MarkupParser.Escape(_title)}[/]")
             .WithAlignment(HorizontalAlignment.Center)
             .WithMargin(1, 1, 0, 0)
             .Build());
 
         // Message
         Modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_message)}[/]")
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]{MarkupParser.Escape(_message)}[/]")
             .WithMargin(2, 1, 0, 0)
             .Build());
 
@@ -87,7 +85,7 @@ public class ErrorModal : ModalBase<bool>
             // Split long details into lines
             foreach (var line in _details.Split('\n'))
             {
-                detailsBuilder.AddLine($"[{ColorScheme.MutedMarkup}]{Markup.Escape(line.TrimEnd())}[/]");
+                detailsBuilder.AddLine($"[{ColorScheme.MutedMarkup}]{MarkupParser.Escape(line.TrimEnd())}[/]");
             }
 
             var detailsPanel = Controls.ScrollablePanel()
@@ -115,7 +113,7 @@ public class ErrorModal : ModalBase<bool>
 
             foreach (var suggestion in _suggestions)
             {
-                suggestionsBuilder.AddLine($"[{ColorScheme.SecondaryMarkup}]  - {Markup.Escape(suggestion)}[/]");
+                suggestionsBuilder.AddLine($"[{ColorScheme.SecondaryMarkup}]  - {MarkupParser.Escape(suggestion)}[/]");
             }
 
             Modal.AddControl(suggestionsBuilder.WithMargin(2, 0, 0, 0).Build());

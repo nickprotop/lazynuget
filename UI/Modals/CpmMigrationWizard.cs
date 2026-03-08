@@ -5,12 +5,10 @@ using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Events;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
 using AsyncHelper = LazyNuGet.Services.AsyncHelper;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -224,7 +222,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         // ── Wire click handlers ───────────────────────────────────────────────
         _migrateBtnClick     = (_, _) => AsyncHelper.FireAndForget(
             StartMigrationAsync,
-            ex => AppendLog($"[{ColorScheme.ErrorMarkup}]✗ {Markup.Escape(ex.Message)}[/]"));
+            ex => AppendLog($"[{ColorScheme.ErrorMarkup}]✗ {MarkupParser.Escape(ex.Message)}[/]"));
 
         _cancelBtnClick      = (_, _) => HandleCancelOrClose();
         _viewResultsBtnClick = (_, _) => SwitchToResultsTab();
@@ -245,7 +243,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         AsyncHelper.FireAndForget(
             RunAnalysisAsync,
             ex => UpdateAnalysisContent(
-                $"[{ColorScheme.ErrorMarkup}]✗ Analysis failed: {Markup.Escape(ex.Message)}[/]"));
+                $"[{ColorScheme.ErrorMarkup}]✗ Analysis failed: {MarkupParser.Escape(ex.Message)}[/]"));
     }
 
     // ── Analysis phase ────────────────────────────────────────────────────────
@@ -255,7 +253,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         try
         {
             UpdateAnalysisContent($"[{ColorScheme.MutedMarkup}]⏳ Scanning projects in:[/]\n" +
-                $"[grey50]{Markup.Escape(_folderPath)}[/]\n\n" +
+                $"[grey50]{MarkupParser.Escape(_folderPath)}[/]\n\n" +
                 $"[{ColorScheme.MutedMarkup}]Please wait...[/]");
 
             _analysis = await _service.AnalyzeAsync(_folderPath);
@@ -268,7 +266,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         catch (Exception ex)
         {
             UpdateAnalysisContent(
-                $"[{ColorScheme.ErrorMarkup}]✗ Analysis error: {Markup.Escape(ex.Message)}[/]");
+                $"[{ColorScheme.ErrorMarkup}]✗ Analysis error: {MarkupParser.Escape(ex.Message)}[/]");
         }
     }
 
@@ -282,7 +280,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
     {
         var lines = new List<string>
         {
-            $"[{ColorScheme.PrimaryMarkup}]Folder:[/] [grey70]{Markup.Escape(_folderPath)}[/]",
+            $"[{ColorScheme.PrimaryMarkup}]Folder:[/] [grey70]{MarkupParser.Escape(_folderPath)}[/]",
             ""
         };
 
@@ -305,7 +303,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
             foreach (var p in analysis.ProjectsToMigrate)
             {
                 var pkgCount = p.InlineRefs.Count;
-                lines.Add($"  [green]●[/] [{ColorScheme.PrimaryMarkup}]{Markup.Escape(p.Name)}[/]" +
+                lines.Add($"  [green]●[/] [{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(p.Name)}[/]" +
                     $"  [grey50]({pkgCount} package{(pkgCount == 1 ? "" : "s")})[/]");
             }
         }
@@ -315,7 +313,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
             lines.Add("");
             lines.Add($"[{ColorScheme.PrimaryMarkup}]Skipped:[/]");
             foreach (var p in analysis.ProjectsSkipped)
-                lines.Add($"  [grey50]○ {Markup.Escape(p.Name)}[/]  [grey35]{Markup.Escape(p.SkipReason ?? "")}[/]");
+                lines.Add($"  [grey50]○ {MarkupParser.Escape(p.Name)}[/]  [grey35]{MarkupParser.Escape(p.SkipReason ?? "")}[/]");
         }
 
         return string.Join("\n", lines);
@@ -339,7 +337,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         _migrationStatus?.SetContent(new List<string>
         {
             $"[{ColorScheme.PrimaryMarkup} bold]Migrating {_analysis.ProjectsToMigrate.Count} project(s)...[/]",
-            $"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_folderPath)}[/]"
+            $"[{ColorScheme.SecondaryMarkup}]{MarkupParser.Escape(_folderPath)}[/]"
         });
 
         if (_progressBar != null)
@@ -353,7 +351,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         var progress = new Progress<string>(line =>
         {
             if (string.IsNullOrWhiteSpace(line)) return;
-            AppendLog($"[grey50]{(DateTime.Now - _startTime).TotalSeconds:F1}s[/] [grey70]{Markup.Escape(line)}[/]");
+            AppendLog($"[grey50]{(DateTime.Now - _startTime).TotalSeconds:F1}s[/] [grey70]{MarkupParser.Escape(line)}[/]");
         });
 
         _migrationResult = await _service.MigrateAsync(
@@ -409,12 +407,12 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
             _migrationStatus?.SetContent(new List<string>
             {
                 $"[{ColorScheme.ErrorMarkup} bold]✗ Migration failed[/]",
-                $"[{ColorScheme.MutedMarkup}]{Markup.Escape(result.Error ?? "Unknown error")}[/]"
+                $"[{ColorScheme.MutedMarkup}]{MarkupParser.Escape(result.Error ?? "Unknown error")}[/]"
             });
 
             lock (_logLock)
             {
-                _logLines.Add($"[{ColorScheme.ErrorMarkup} bold]✗ {Markup.Escape(result.Error ?? "Unknown error")}[/]");
+                _logLines.Add($"[{ColorScheme.ErrorMarkup} bold]✗ {MarkupParser.Escape(result.Error ?? "Unknown error")}[/]");
                 _migrationLog?.SetContent(new List<string> { string.Join("\n", _logLines) });
             }
         }
@@ -434,7 +432,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
             {
                 $"[{ColorScheme.ErrorMarkup} bold]✗ Migration failed[/]",
                 "",
-                $"[{ColorScheme.ErrorMarkup}]{Markup.Escape(result.Error ?? "Unknown error")}[/]",
+                $"[{ColorScheme.ErrorMarkup}]{MarkupParser.Escape(result.Error ?? "Unknown error")}[/]",
                 "",
                 $"[{ColorScheme.MutedMarkup}]All changes have been rolled back.[/]",
                 $"[{ColorScheme.MutedMarkup}]Backup files (.csproj.bak) remain for manual inspection.[/]"
@@ -457,7 +455,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         {
             lines.Add("");
             lines.Add($"  [{ColorScheme.PrimaryMarkup}]Directory.Packages.props:[/]");
-            lines.Add($"  [grey70]{Markup.Escape(result.PropsFilePath)}[/]");
+            lines.Add($"  [grey70]{MarkupParser.Escape(result.PropsFilePath)}[/]");
         }
 
         if (result.ModifiedProjectPaths.Count > 0)
@@ -465,7 +463,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
             lines.Add("");
             lines.Add($"  [{ColorScheme.PrimaryMarkup}]Backup files created (.csproj.bak):[/]");
             foreach (var path in result.ModifiedProjectPaths)
-                lines.Add($"  [grey70]{Markup.Escape(Path.GetFileName(path + ".bak"))}[/]");
+                lines.Add($"  [grey70]{MarkupParser.Escape(Path.GetFileName(path + ".bak"))}[/]");
         }
 
         return string.Join("\n", lines);
@@ -568,7 +566,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         {
             AsyncHelper.FireAndForget(
                 StartMigrationAsync,
-                ex => AppendLog($"[{ColorScheme.ErrorMarkup}]✗ {Markup.Escape(ex.Message)}[/]"));
+                ex => AppendLog($"[{ColorScheme.ErrorMarkup}]✗ {MarkupParser.Escape(ex.Message)}[/]"));
             e.Handled = true;
         }
         else

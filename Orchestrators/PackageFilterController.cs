@@ -1,7 +1,7 @@
 using SharpConsoleUI.Controls;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI.Utilities;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.Orchestrators;
 
@@ -144,7 +144,7 @@ public class PackageFilterController
     {
         if (_filterDisplay == null) return;
 
-        var filterText = string.IsNullOrEmpty(_packageFilter) ? "_" : Markup.Escape(_packageFilter);
+        var filterText = string.IsNullOrEmpty(_packageFilter) ? "_" : MarkupParser.Escape(_packageFilter);
         _filterDisplay.SetContent(new List<string> {
             $"[{ColorScheme.MutedMarkup}]Filter: [/][{ColorScheme.PrimaryMarkup}]{filterText}[/] " +
             $"[{ColorScheme.MutedMarkup}](Esc to clear)[/]"

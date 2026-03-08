@@ -3,13 +3,11 @@ using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
 using AsyncHelper = LazyNuGet.Services.AsyncHelper;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -502,10 +500,10 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
 
         var downloads = FormatDownloads(pkg.TotalDownloads);
 
-        return $"📦 [{ColorScheme.PrimaryMarkup}]{Markup.Escape(pkg.Id)}[/] " +
-               $"[grey70]v{Markup.Escape(pkg.Version)}[/]{badgeText}\n" +
-               $"    [{ColorScheme.MutedMarkup}]{Markup.Escape(authors)} · {downloads} downloads[/]\n" +
-               $"    [{ColorScheme.MutedMarkup}]{Markup.Escape(description)}[/]";
+        return $"📦 [{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(pkg.Id)}[/] " +
+               $"[grey70]v{MarkupParser.Escape(pkg.Version)}[/]{badgeText}\n" +
+               $"    [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(authors)} · {downloads} downloads[/]\n" +
+               $"    [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(description)}[/]";
     }
 
     private void HandleInstall()

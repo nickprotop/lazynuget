@@ -6,7 +6,6 @@ using SharpConsoleUI.Layout;
 using SharpConsoleUI.Core;
 using SharpConsoleUI.Dialogs;
 using SharpConsoleUI.Events;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.UI;
 using LazyNuGet.UI.Utilities;
@@ -14,8 +13,7 @@ using LazyNuGet.Services;
 using LazyNuGet.UI.Components;
 using LazyNuGet.UI.Modals;
 using LazyNuGet.Orchestrators;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet;
 
@@ -214,7 +212,7 @@ public class LazyNuGetWindow : IDisposable
         // Top status bar
         var initFolderName = Path.GetFileName(_currentFolderPath.TrimEnd(Path.DirectorySeparatorChar));
         if (string.IsNullOrEmpty(initFolderName)) initFolderName = _currentFolderPath;
-        _topStatusLeft = Controls.Markup($"[cyan1]{Markup.Escape(initFolderName)}[/] [grey50]({Markup.Escape(_currentFolderPath)})[/]")
+        _topStatusLeft = Controls.Markup($"[cyan1]{MarkupParser.Escape(initFolderName)}[/] [grey50]({MarkupParser.Escape(_currentFolderPath)})[/]")
             .WithAlignment(HorizontalAlignment.Left)
             .WithMargin(1, 0, 0, 0)
             .Build();
@@ -877,7 +875,7 @@ public class LazyNuGetWindow : IDisposable
             _statusBarManager?.SetFolderPath(_currentFolderPath);
 
             // Show loading feedback with progress bar
-            ShowLoadingPanel("Discovering projects...", $"Scanning {Markup.Escape(_currentFolderPath)}");
+            ShowLoadingPanel("Discovering projects...", $"Scanning {MarkupParser.Escape(_currentFolderPath)}");
 
             // Discover projects
             var projectFiles = await _discoveryService.DiscoverProjectsAsync(_currentFolderPath);
@@ -1273,7 +1271,7 @@ public class LazyNuGetWindow : IDisposable
         var controls = new List<IWindowControl>();
 
         var textBuilder = Controls.Markup()
-            .AddLine($"[{ColorScheme.PrimaryMarkup}]{Markup.Escape(title)}[/]");
+            .AddLine($"[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(title)}[/]");
         if (subtitle != null)
             textBuilder.AddLine($"[grey70]{subtitle}[/]");
         controls.Add(textBuilder.WithMargin(1, 1, 1, 0).Build());

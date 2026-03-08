@@ -4,13 +4,11 @@ using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
 using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
-using Spectre.Console;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
 using NuGet.Versioning;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -64,7 +62,7 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
         // ── Header ────────────────────────────────────────────
         var header = Controls.Markup()
             .AddLine($"[{ColorScheme.PrimaryMarkup} bold]Choose Update Strategy[/]")
-            .AddLine($"[{ColorScheme.SecondaryMarkup}]Select how to update {_outdatedPackages.Count} outdated package(s) in {Markup.Escape(_projectName)}[/]")
+            .AddLine($"[{ColorScheme.SecondaryMarkup}]Select how to update {_outdatedPackages.Count} outdated package(s) in {MarkupParser.Escape(_projectName)}[/]")
             .WithMargin(2, 2, 2, 0)
             .Build();
 
@@ -317,7 +315,7 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
             {
                 var displayName = TruncatePackageName(pkg.Id, 40);
                 includedBuilder.AddLine(
-                    $"[green]✓[/] [{ColorScheme.PrimaryMarkup}]{Markup.Escape(displayName)}:[/] " +
+                    $"[green]✓[/] [{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(displayName)}:[/] " +
                     $"[{ColorScheme.MutedMarkup}]{pkg.Version} → {pkg.LatestVersion}[/]");
             }
         }
@@ -339,7 +337,7 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
                 var displayName = TruncatePackageName(pkg.Id, 40);
                 var reason = GetSkipReason(pkg, strategy);
                 skippedBuilder.AddLine(
-                    $"[red]✗[/] [{ColorScheme.MutedMarkup}]{Markup.Escape(displayName)}:[/] " +
+                    $"[red]✗[/] [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(displayName)}:[/] " +
                     $"[{ColorScheme.MutedMarkup}]{pkg.Version} → {pkg.LatestVersion}[/] " +
                     $"[grey50]({reason})[/]");
             }

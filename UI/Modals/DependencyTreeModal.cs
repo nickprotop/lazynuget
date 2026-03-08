@@ -4,14 +4,12 @@ using SharpConsoleUI.Controls;
 using SharpConsoleUI.Core;
 using SharpConsoleUI.Drawing;
 using SharpConsoleUI.Layout;
-using Spectre.Console;
 using NuGet.Versioning;
 using LazyNuGet.Models;
 using LazyNuGet.Services;
 using LazyNuGet.UI.Utilities;
 using AsyncHelper = LazyNuGet.Services.AsyncHelper;
-using HorizontalAlignment = SharpConsoleUI.Layout.HorizontalAlignment;
-using VerticalAlignment = SharpConsoleUI.Layout.VerticalAlignment;
+using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI.Modals;
 
@@ -105,8 +103,8 @@ public class DependencyTreeModal : ModalBase<bool>
             ? $"[{ColorScheme.PrimaryMarkup} bold]Package Dependencies[/]"
             : $"[{ColorScheme.PrimaryMarkup} bold]Dependency Tree[/]";
         var subtitleText = _isPackageMode
-            ? $"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_selectedPackage!.Id)} {Markup.Escape(_selectedPackage.Version)} in {Markup.Escape(_project.Name)}[/]"
-            : $"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_project.Name)} ({_project.TargetFramework})[/]";
+            ? $"[{ColorScheme.SecondaryMarkup}]{MarkupParser.Escape(_selectedPackage!.Id)} {MarkupParser.Escape(_selectedPackage.Version)} in {MarkupParser.Escape(_project.Name)}[/]"
+            : $"[{ColorScheme.SecondaryMarkup}]{MarkupParser.Escape(_project.Name)} ({_project.TargetFramework})[/]";
 
         var header = Controls.Markup()
             .AddLine(headerText)
@@ -257,7 +255,7 @@ public class DependencyTreeModal : ModalBase<bool>
         ex =>
         {
             _statusLabel?.SetContent(new List<string> {
-                $"[{ColorScheme.ErrorMarkup}]Error loading dependencies: {Markup.Escape(ex.Message)}[/]"
+                $"[{ColorScheme.ErrorMarkup}]Error loading dependencies: {MarkupParser.Escape(ex.Message)}[/]"
             });
         });
     }
@@ -362,7 +360,7 @@ public class DependencyTreeModal : ModalBase<bool>
                 // Framework root node
                 var fwGuide = isLastFramework ? Last : Branch;
                 var fwPipe = isLastFramework ? Blank : Pipe;
-                lines.Add($"[grey23]{fwGuide}[/][cyan1 bold]{Markup.Escape(tree.TargetFramework)}[/]");
+                lines.Add($"[grey23]{fwGuide}[/][cyan1 bold]{MarkupParser.Escape(tree.TargetFramework)}[/]");
 
                 for (var si = 0; si < sections.Count; si++)
                 {
@@ -371,7 +369,7 @@ public class DependencyTreeModal : ModalBase<bool>
                     var secGuide = isLastSection ? Last : Branch;
                     var secPipe = isLastSection ? Blank : Pipe;
 
-                    lines.Add($"[grey23]{fwPipe}{secGuide}[/][{color}]{Markup.Escape(label)}[/]");
+                    lines.Add($"[grey23]{fwPipe}{secGuide}[/][{color}]{MarkupParser.Escape(label)}[/]");
 
                     for (var di = 0; di < deps.Count; di++)
                     {
@@ -379,12 +377,12 @@ public class DependencyTreeModal : ModalBase<bool>
                         var isLastDep = di == deps.Count - 1;
                         var depGuide = isLastDep ? Last : Branch;
                         var requested = dep.RequestedVersion != dep.ResolvedVersion
-                            ? $" [grey35](requested {Markup.Escape(dep.RequestedVersion ?? "")})[/]"
+                            ? $" [grey35](requested {MarkupParser.Escape(dep.RequestedVersion ?? "")})[/]"
                             : "";
                         var outdated = dep.IsOutdated == true
-                            ? $"  [yellow]⚠ {Markup.Escape(dep.LatestVersion!)} available[/]"
+                            ? $"  [yellow]⚠ {MarkupParser.Escape(dep.LatestVersion!)} available[/]"
                             : "";
-                        lines.Add($"[grey23]{fwPipe}{secPipe}{depGuide}[/][{itemColor}]{Markup.Escape(dep.PackageId)}[/] [grey70]{Markup.Escape(dep.ResolvedVersion)}[/]{requested}{outdated}");
+                        lines.Add($"[grey23]{fwPipe}{secPipe}{depGuide}[/][{itemColor}]{MarkupParser.Escape(dep.PackageId)}[/] [grey70]{MarkupParser.Escape(dep.ResolvedVersion)}[/]{requested}{outdated}");
                     }
                 }
 
@@ -403,7 +401,7 @@ public class DependencyTreeModal : ModalBase<bool>
                     var secGuide = isLastSection ? Last : Branch;
                     var secPipe = isLastSection ? Blank : Pipe;
 
-                    lines.Add($"[grey23]{secGuide}[/][{color}]{Markup.Escape(label)}[/]");
+                    lines.Add($"[grey23]{secGuide}[/][{color}]{MarkupParser.Escape(label)}[/]");
 
                     for (var di = 0; di < deps.Count; di++)
                     {
@@ -411,12 +409,12 @@ public class DependencyTreeModal : ModalBase<bool>
                         var isLastDep = di == deps.Count - 1;
                         var depGuide = isLastDep ? Last : Branch;
                         var requested = dep.RequestedVersion != dep.ResolvedVersion
-                            ? $" [grey35](requested {Markup.Escape(dep.RequestedVersion ?? "")})[/]"
+                            ? $" [grey35](requested {MarkupParser.Escape(dep.RequestedVersion ?? "")})[/]"
                             : "";
                         var outdated = dep.IsOutdated == true
-                            ? $"  [yellow]⚠ {Markup.Escape(dep.LatestVersion!)} available[/]"
+                            ? $"  [yellow]⚠ {MarkupParser.Escape(dep.LatestVersion!)} available[/]"
                             : "";
-                        lines.Add($"[grey23]{secPipe}{depGuide}[/][{itemColor}]{Markup.Escape(dep.PackageId)}[/] [grey70]{dep.ResolvedVersion}[/]{requested}{outdated}");
+                        lines.Add($"[grey23]{secPipe}{depGuide}[/][{itemColor}]{MarkupParser.Escape(dep.PackageId)}[/] [grey70]{dep.ResolvedVersion}[/]{requested}{outdated}");
                     }
                 }
 
@@ -552,11 +550,11 @@ public class DependencyTreeModal : ModalBase<bool>
 
         var totalDeps = nugetData.Dependencies.Sum(g => g.Packages.Count);
         _statusLabel?.SetContent(new List<string> {
-            $"[{ColorScheme.SecondaryMarkup}]{Markup.Escape(_selectedPackage!.Id)}[/] [{ColorScheme.MutedMarkup}]{Markup.Escape(nugetData.Version)} · {totalDeps} dependencies across {nugetData.Dependencies.Count} framework(s)[/]"
+            $"[{ColorScheme.SecondaryMarkup}]{MarkupParser.Escape(_selectedPackage!.Id)}[/] [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(nugetData.Version)} · {totalDeps} dependencies across {nugetData.Dependencies.Count} framework(s)[/]"
         });
 
         // Root: package name + version
-        lines.Add($"[cyan1 bold]{Markup.Escape(nugetData.Id)}[/] [grey70]{Markup.Escape(nugetData.Version)}[/]");
+        lines.Add($"[cyan1 bold]{MarkupParser.Escape(nugetData.Id)}[/] [grey70]{MarkupParser.Escape(nugetData.Version)}[/]");
 
         for (var gi = 0; gi < nugetData.Dependencies.Count; gi++)
         {
@@ -566,7 +564,7 @@ public class DependencyTreeModal : ModalBase<bool>
             var groupPipe = isLastGroup ? Blank : Pipe;
 
             var fwLabel = string.IsNullOrEmpty(group.TargetFramework) ? "(any)" : group.TargetFramework;
-            lines.Add($"[grey23]{groupGuide}[/][green]{Markup.Escape(fwLabel)}[/] [grey50]({group.Packages.Count})[/]");
+            lines.Add($"[grey23]{groupGuide}[/][green]{MarkupParser.Escape(fwLabel)}[/] [grey50]({group.Packages.Count})[/]");
 
             if (group.Packages.Count == 0)
             {
@@ -580,7 +578,7 @@ public class DependencyTreeModal : ModalBase<bool>
                     var isLastDep = di == group.Packages.Count - 1;
                     var depGuide = isLastDep ? Last : Branch;
                     var versionInfo = string.IsNullOrEmpty(dep.VersionRange) ? "" : $" [grey50]({dep.VersionRange})[/]";
-                    lines.Add($"[grey23]{groupPipe}{depGuide}[/][grey70]{Markup.Escape(dep.Id)}[/]{versionInfo}");
+                    lines.Add($"[grey23]{groupPipe}{depGuide}[/][grey70]{MarkupParser.Escape(dep.Id)}[/]{versionInfo}");
                 }
             }
         }
