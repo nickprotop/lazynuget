@@ -36,6 +36,7 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
     private MarkupControl? _filterLabel;
     private ProgressBarControl? _searchProgress;
     private ButtonControl? _installButton;
+    private ButtonControl? _detailsButton;
     private ButtonControl? _clearButton;
     private DropdownControl? _versionTypeDropdown;
 
@@ -51,6 +52,7 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
     private EventHandler<int>? _listSelectionHandler;
     private EventHandler<int>? _dropdownHandler;
     private EventHandler<ButtonControl>? _installClickHandler;
+    private EventHandler<ButtonControl>? _detailsClickHandler;
     private EventHandler<ButtonControl>? _clearClickHandler;
     private EventHandler<ButtonControl>? _closeClickHandler;
 
@@ -157,12 +159,13 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
         {
             var selectedPkg = _resultsList?.SelectedItem?.Tag as NuGetPackage;
             if (_installButton != null) _installButton.IsEnabled = selectedPkg != null;
+            if (_detailsButton != null) _detailsButton.IsEnabled = selectedPkg != null;
         };
         _resultsList.SelectedIndexChanged += _listSelectionHandler;
 
         // ── Filter help label ─────────────────────────────────
         _filterLabel = Controls.Markup()
-            .AddLine($"[{ColorScheme.MutedMarkup}]F1:All  F2:Stable  F3:Pre-release  |  I:Install  C:Clear  Esc:Close[/]")
+            .AddLine($"[{ColorScheme.MutedMarkup}]F1:All  F2:Stable  F3:Pre-release  |  D:Details  I:Install  C:Clear  Esc:Close[/]")
             .WithMargin(2, 1, 2, 0)
             .StickyBottom()
             .Build();
@@ -184,6 +187,16 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
         _installButton.IsEnabled = false;
         _installClickHandler = (s, e) => HandleInstall();
         _installButton.Click += _installClickHandler;
+
+        _detailsButton = Controls.Button("[grey93]Details (D)[/]")
+            .WithBackgroundColor(Color.Grey30)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(Color.DodgerBlue1)
+            .WithFocusedForegroundColor(Color.White)
+            .Build();
+        _detailsButton.IsEnabled = false;
+        _detailsClickHandler = (s, e) => HandleDetails();
+        _detailsButton.Click += _detailsClickHandler;
 
         _clearButton = Controls.Button("[grey93]Clear (C)[/]")
             .WithBackgroundColor(Color.Grey30)
@@ -207,6 +220,8 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
             .WithAlignment(HorizontalAlignment.Center)
             .StickyBottom()
             .Column(col => col.Add(_installButton))
+            .Column(col => col.Width(2))
+            .Column(col => col.Add(_detailsButton))
             .Column(col => col.Width(2))
             .Column(col => col.Add(_clearButton))
             .Column(col => col.Width(2))
@@ -358,6 +373,11 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
             e.Handled = true;
         }
         // Action shortcuts
+        else if (e.KeyInfo.Key == ConsoleKey.D && _detailsButton?.IsEnabled == true)
+        {
+            HandleDetails();
+            e.Handled = true;
+        }
         else if (e.KeyInfo.Key == ConsoleKey.I && _installButton != null && _installButton.IsEnabled)
         {
             HandleInstall();
@@ -410,6 +430,9 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
         if (_installButton != null && _installClickHandler != null)
             _installButton.Click -= _installClickHandler;
 
+        if (_detailsButton != null && _detailsClickHandler != null)
+            _detailsButton.Click -= _detailsClickHandler;
+
         if (_clearButton != null && _clearClickHandler != null)
             _clearButton.Click -= _clearClickHandler;
     }
@@ -439,6 +462,7 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
             emptyItem.Tag = null;
             _resultsList?.AddItem(emptyItem);
             if (_installButton != null) _installButton.IsEnabled = false;
+            if (_detailsButton != null) _detailsButton.IsEnabled = false;
             return;
         }
 
@@ -450,9 +474,10 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
             _resultsList?.AddItem(listItem);
         }
 
-        // Enable/disable install button based on selection
+        // Enable/disable action buttons based on selection
         var selectedPkg = _resultsList?.SelectedItem?.Tag as NuGetPackage;
         if (_installButton != null) _installButton.IsEnabled = selectedPkg != null;
+        if (_detailsButton != null) _detailsButton.IsEnabled = selectedPkg != null;
     }
 
     private void UpdateStatusLabel()
@@ -504,6 +529,18 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
                $"[grey70]v{MarkupParser.Escape(pkg.Version)}[/]{badgeText}\n" +
                $"    [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(authors)} · {downloads} downloads[/]\n" +
                $"    [{ColorScheme.MutedMarkup}]{MarkupParser.Escape(description)}[/]";
+    }
+
+    private void HandleDetails()
+    {
+        if (_resultsList?.SelectedItem?.Tag is not NuGetPackage pkg) return;
+        AsyncHelper.FireAndForget(async () =>
+        {
+            var action = await PackageDetailsModal.ShowAsync(
+                WindowSystem, pkg, _nugetService, Modal);
+            if (action == PackageDetailsAction.Install)
+                CloseWithResult(pkg);
+        });
     }
 
     private void HandleInstall()

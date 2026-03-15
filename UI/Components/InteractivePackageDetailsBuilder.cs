@@ -196,6 +196,93 @@ public static class InteractivePackageDetailsBuilder
             .Build();
     }
 
+    /// <summary>
+    /// Overview panel without installed version context (for search details).
+    /// </summary>
+    public static MarkupControl BuildOverviewPanel(NuGetPackage nugetData)
+    {
+        var builder = Controls.Markup();
+
+        // Verification and warning badges
+        var badges = new List<string>();
+        if (nugetData.IsVerified)
+            badges.Add("[green]✓ Verified[/]");
+        if (nugetData.VulnerabilityCount > 0)
+            badges.Add($"[red]⚠ {nugetData.VulnerabilityCount} Vulnerabilities — see F4:Security[/]");
+        if (badges.Any())
+        {
+            builder.AddLine(string.Join(" ", badges));
+            builder.AddEmptyLine();
+        }
+
+        // Deprecation warning
+        if (nugetData.IsDeprecated)
+        {
+            builder.AddLine($"[red bold]⚠ DEPRECATED[/]");
+            if (!string.IsNullOrEmpty(nugetData.DeprecationMessage))
+                builder.AddLine($"[yellow]{MarkupParser.Escape(nugetData.DeprecationMessage)}[/]");
+            if (!string.IsNullOrEmpty(nugetData.AlternatePackageId))
+                builder.AddLine($"[grey70]Alternative: {MarkupParser.Escape(nugetData.AlternatePackageId)}[/]");
+            builder.AddEmptyLine();
+        }
+
+        // Description
+        if (!string.IsNullOrEmpty(nugetData.Description))
+        {
+            builder.AddLine($"[grey70 bold]Description:[/]");
+            builder.AddLine($"[grey70]{MarkupParser.Escape(nugetData.Description)}[/]");
+            builder.AddEmptyLine();
+        }
+
+        // Authors
+        if (nugetData.Authors.Any())
+        {
+            var authors = string.Join(", ", nugetData.Authors);
+            builder.AddLine($"[grey70]Authors: {MarkupParser.Escape(authors)}[/]");
+        }
+
+        // License
+        if (!string.IsNullOrEmpty(nugetData.LicenseExpression))
+            builder.AddLine($"[grey70]License: {MarkupParser.Escape(nugetData.LicenseExpression)}[/]");
+        else if (!string.IsNullOrEmpty(nugetData.LicenseUrl))
+            builder.AddLine($"[grey70]License: {MarkupParser.Escape(nugetData.LicenseUrl)}[/]");
+
+        // Downloads
+        if (nugetData.TotalDownloads > 0)
+            builder.AddLine($"[grey70]Downloads: {FormatDownloads(nugetData.TotalDownloads)}[/]");
+
+        // Published
+        if (nugetData.Published.HasValue)
+            builder.AddLine($"[grey70]Published: {nugetData.Published.Value:yyyy-MM-dd}[/]");
+
+        // Package Size
+        if (nugetData.PackageSize.HasValue)
+            builder.AddLine($"[grey70]Package Size: {FormatSize(nugetData.PackageSize.Value)}[/]");
+
+        // Tags
+        if (nugetData.Tags.Any())
+        {
+            var tags = string.Join(", ", nugetData.Tags);
+            builder.AddLine($"[grey70]Tags: {MarkupParser.Escape(tags)}[/]");
+        }
+
+        // Target Frameworks
+        if (nugetData.TargetFrameworks.Any())
+        {
+            var frameworks = string.Join(", ", nugetData.TargetFrameworks);
+            builder.AddLine($"[grey70]Target Frameworks: {MarkupParser.Escape(frameworks)}[/]");
+        }
+
+        // URLs
+        if (!string.IsNullOrEmpty(nugetData.ProjectUrl))
+            builder.AddLine($"[grey70]Project URL: {MarkupParser.Escape(nugetData.ProjectUrl)}[/]");
+        if (!string.IsNullOrEmpty(nugetData.RepositoryUrl))
+            builder.AddLine($"[grey70]Repository: {MarkupParser.Escape(nugetData.RepositoryUrl)}[/]");
+
+        builder.AddEmptyLine();
+        return builder.Build();
+    }
+
     private static MarkupControl BuildOverviewPanel(NuGetPackage nugetData, PackageReference package, Action? onMigrate = null)
     {
         var builder = Controls.Markup();
@@ -294,7 +381,7 @@ public static class InteractivePackageDetailsBuilder
         return builder.Build();
     }
 
-    private static MarkupControl BuildDependenciesPanel(NuGetPackage nugetData)
+    public static MarkupControl BuildDependenciesPanel(NuGetPackage nugetData)
     {
         // Tree guide characters (same as DependencyTreeModal)
         const string Branch = "├── ";
@@ -344,6 +431,53 @@ public static class InteractivePackageDetailsBuilder
                     builder.AddLine($"[grey50]{groupPipe}{depGuide}[/][grey70]{MarkupParser.Escape(dep.Id)}[/]{versionInfo}");
                 }
             }
+        }
+
+        builder.AddEmptyLine();
+        return builder.Build();
+    }
+
+    /// <summary>
+    /// Versions panel without installed version context (for search details).
+    /// </summary>
+    public static MarkupControl BuildVersionsPanel(NuGetPackage nugetData)
+    {
+        var builder = Controls.Markup();
+
+        if (!nugetData.Versions.Any())
+        {
+            builder.AddLine("[grey50]No version history available[/]");
+            builder.AddEmptyLine();
+            return builder.Build();
+        }
+
+        const int MaxRecentVersions = 20;
+        var totalCount = nugetData.Versions.Count;
+        var recentVersions = nugetData.Versions.Take(MaxRecentVersions).ToList();
+
+        // Header
+        if (totalCount > MaxRecentVersions)
+            builder.AddLine($"[grey70 bold]Available Versions ({totalCount} total, showing {MaxRecentVersions} most recent):[/]");
+        else
+            builder.AddLine($"[grey70 bold]Available Versions ({totalCount}):[/]");
+
+        builder.AddEmptyLine();
+
+        // Show recent versions
+        foreach (var version in recentVersions)
+        {
+            if (version == nugetData.Version)
+                builder.AddLine($"[yellow]{MarkupParser.Escape(version)}[/] [grey50](latest)[/]");
+            else
+                builder.AddLine($"[grey70]{MarkupParser.Escape(version)}[/]");
+        }
+
+        // Show count of older versions
+        if (totalCount > MaxRecentVersions)
+        {
+            var olderCount = totalCount - MaxRecentVersions;
+            builder.AddEmptyLine();
+            builder.AddLine($"[grey50]... and {olderCount} older version{(olderCount == 1 ? "" : "s")}[/]");
         }
 
         builder.AddEmptyLine();
@@ -458,7 +592,7 @@ public static class InteractivePackageDetailsBuilder
     }
 
 
-    private static MarkupControl BuildSecurityPanel(NuGetPackage nugetData)
+    public static MarkupControl BuildSecurityPanel(NuGetPackage nugetData)
     {
         var builder = Controls.Markup();
 
