@@ -118,12 +118,6 @@ public class DependencyTreeModal : ModalBase<bool>
             .WithMargin(2, 1, 2, 0)
             .Build();
 
-        // Separator
-        var separator1 = Controls.RuleBuilder()
-            .WithColor(ColorScheme.RuleColor)
-            .Build();
-        separator1.Margin = new Margin(2, 1, 2, 0);
-
         // Filter dropdown (Mode A only)
         _filterDropdown = new DropdownControl(string.Empty, new[]
         {
@@ -151,7 +145,9 @@ public class DependencyTreeModal : ModalBase<bool>
         _filterToolbar = Controls.Toolbar()
             .Add(_filterDropdown)
             .WithSpacing(2)
-            .WithMargin(2, 0, 2, 1)
+            .WithAboveLine()
+            .WithAboveLineColor(ColorScheme.RuleColor)
+            .WithMargin(2, 1, 2, 1)
             .Build();
 
         // Hide filter toolbar in package mode
@@ -216,7 +212,6 @@ public class DependencyTreeModal : ModalBase<bool>
         // Assemble modal
         Modal.AddControl(header);
         Modal.AddControl(_statusLabel);
-        Modal.AddControl(separator1);
         Modal.AddControl(_filterToolbar);
         Modal.AddControl(_scrollPanel);
         Modal.AddControl(helpLabel);

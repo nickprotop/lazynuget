@@ -170,6 +170,14 @@ public class ConfirmInstallModal : ModalBase<bool>
             .OnClick((s, e) => CloseWithResult(false))
             .Build();
 
+        // Bottom hint
+        Modal.AddControl(Controls.Markup()
+            .AddLine($"[{ColorScheme.MutedMarkup}]Y:Install  N/Esc:Cancel[/]")
+            .WithAlignment(HorizontalAlignment.Center)
+            .WithMargin(2, 1, 2, 0)
+            .StickyBottom()
+            .Build());
+
         // Bottom rule before buttons
         Modal.AddControl(Controls.RuleBuilder()
             .StickyBottom()
@@ -185,18 +193,6 @@ public class ConfirmInstallModal : ModalBase<bool>
             .Build();
         buttonGrid.Margin = new Margin(0, 1, 0, 0);
         Modal.AddControl(buttonGrid);
-
-        // Bottom hint
-        Modal.AddControl(Controls.RuleBuilder()
-            .StickyBottom()
-            .WithColor(ColorScheme.RuleColor)
-            .Build());
-
-        Modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.MutedMarkup}]Y:Install  N/Esc:Cancel[/]")
-            .WithAlignment(HorizontalAlignment.Center)
-            .StickyBottom()
-            .Build());
     }
 
     private void AddDependencyTree()

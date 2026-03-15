@@ -165,13 +165,7 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         _tabChanging = OnTabChanging;
         _tabControl.TabChanging += _tabChanging;
 
-        // ── Separator + buttons ───────────────────────────────────────────────
-        var separator = Controls.RuleBuilder()
-            .WithColor(ColorScheme.RuleColor)
-            .StickyBottom()
-            .Build();
-        separator.Margin = new Margin(2, 0, 2, 0);
-
+        // ── Buttons ───────────────────────────────────────────────────────────
         _migrateBtn = Controls.Button("[cyan1]Migrate[/] [grey78](Enter)[/]")
             .Disabled()
             .WithMargin(1, 0, 0, 0)
@@ -214,6 +208,8 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
             .AddButton(_closeBtn)
             .WithSpacing(2)
             .WithAlignment(HorizontalAlignment.Center)
+            .WithAboveLine()
+            .WithAboveLineColor(ColorScheme.RuleColor)
             .StickyBottom()
             .WithBackgroundColor(ColorScheme.WindowBackground)
             .WithMargin(0, 0, 0, 0)
@@ -236,7 +232,6 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         // ── Assemble modal ────────────────────────────────────────────────────
         Modal.AddControl(header);
         Modal.AddControl(_tabControl);
-        Modal.AddControl(separator);
         Modal.AddControl(buttonToolbar);
 
         // Kick off analysis in the background

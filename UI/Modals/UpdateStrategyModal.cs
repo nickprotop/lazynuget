@@ -66,12 +66,6 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
             .WithMargin(2, 2, 2, 0)
             .Build();
 
-        // ── Separator ─────────────────────────────────────────
-        var separator1 = Controls.RuleBuilder()
-            .WithColor(ColorScheme.RuleColor)
-            .Build();
-        separator1.Margin = new Margin(2, 1, 2, 1);
-
         // ── Strategy dropdown ─────────────────────────────────
         var strategies = new[]
         {
@@ -91,7 +85,9 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
         var dropdownToolbar = Controls.Toolbar()
             .Add(_strategyDropdown)
             .WithSpacing(2)
-            .WithMargin(2, 0, 2, 1)
+            .WithAboveLine()
+            .WithAboveLineColor(ColorScheme.RuleColor)
+            .WithMargin(2, 1, 2, 1)
             .Build();
 
         // ── Description label ─────────────────────────────────
@@ -155,28 +151,20 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
         buttonToolbar.Margin = new Margin(0, 0, 0, 0);
 
         // ── Help label ────────────────────────────────────────
-        var separator3 = Controls.RuleBuilder()
-            .WithColor(ColorScheme.RuleColor)
-            .StickyBottom()
-            .Build();
-        separator3.Margin = new Margin(2, 0, 2, 0);
-
         var helpLabel = Controls.Markup()
             .AddLine($"[{ColorScheme.MutedMarkup}]F1-F3:Quick Select  PgUp/PgDn:Scroll  Enter:Continue  Esc:Cancel[/]")
-            .WithMargin(2, 0, 2, 0)
+            .WithMargin(2, 1, 2, 0)
             .StickyBottom()
             .Build();
 
         // ── Assemble modal ────────────────────────────────────
         Modal.AddControl(header);
-        Modal.AddControl(separator1);
         Modal.AddControl(dropdownToolbar);
         Modal.AddControl(_descriptionLabel);
         Modal.AddControl(_packageScrollPanel);
+        Modal.AddControl(helpLabel);
         Modal.AddControl(separator2);
         Modal.AddControl(buttonToolbar);
-        Modal.AddControl(separator3);
-        Modal.AddControl(helpLabel);
     }
 
     protected override void SetInitialFocus()

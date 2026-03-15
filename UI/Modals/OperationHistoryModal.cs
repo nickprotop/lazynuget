@@ -114,12 +114,6 @@ public class OperationHistoryModal : ModalBase<bool>
             .WithMargin(2, 1, 2, 0)
             .Build();
 
-        // Separator
-        var separator1 = Controls.RuleBuilder()
-            .WithColor(ColorScheme.RuleColor)
-            .Build();
-        separator1.Margin = new Margin(2, 1, 2, 0);
-
         // Dropdown filters for mouse users
         _typeDropdown = new DropdownControl(string.Empty, new[]
         {
@@ -176,7 +170,9 @@ public class OperationHistoryModal : ModalBase<bool>
             .Add(_typeDropdown)
             .Add(_statusDropdown)
             .WithSpacing(2)
-            .WithMargin(2, 0, 2, 1)
+            .WithAboveLine()
+            .WithAboveLineColor(ColorScheme.RuleColor)
+            .WithMargin(2, 1, 2, 1)
             .Build();
 
         // History list (simple mode - no selection markers)
@@ -277,7 +273,6 @@ public class OperationHistoryModal : ModalBase<bool>
         // Assemble modal
         Modal.AddControl(header);
         Modal.AddControl(_statusLabel);
-        Modal.AddControl(separator1);
         Modal.AddControl(filterToolbar);
         Modal.AddControl(_historyList);
         Modal.AddControl(_filterLabel);

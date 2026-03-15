@@ -206,6 +206,14 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
             .Build();
         Modal.AddControl(_summaryLabel);
 
+        // Hint bar
+        Modal.AddControl(Controls.Markup()
+            .AddLine($"[{ColorScheme.MutedMarkup}]Space:Toggle  A:Select All  N:Select None  Enter:Install  Esc:Cancel[/]")
+            .WithAlignment(HorizontalAlignment.Center)
+            .WithMargin(2, 1, 2, 0)
+            .StickyBottom()
+            .Build());
+
         // Separator before buttons
         var sep2 = Controls.RuleBuilder().WithColor(ColorScheme.RuleColor).StickyBottom().Build();
         sep2.Margin = new Margin(2, 0, 2, 0);
@@ -242,17 +250,6 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
             .Build();
         buttonGrid.Margin = new Margin(0, 0, 0, 0);
         Modal.AddControl(buttonGrid);
-
-        // Hint bar
-        var sep3 = Controls.RuleBuilder().WithColor(ColorScheme.RuleColor).StickyBottom().Build();
-        sep3.Margin = new Margin(2, 0, 2, 0);
-        Modal.AddControl(sep3);
-
-        Modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.MutedMarkup}]Space:Toggle  A:Select All  N:Select None  Enter:Install  Esc:Cancel[/]")
-            .WithAlignment(HorizontalAlignment.Center)
-            .StickyBottom()
-            .Build());
     }
 
     protected override void SetInitialFocus()

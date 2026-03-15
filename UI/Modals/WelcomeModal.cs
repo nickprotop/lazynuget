@@ -81,6 +81,14 @@ public class WelcomeModal : ModalBase<bool>
             .WithMargin(2, 1, 2, 0)
             .Build());
 
+        // Bottom hint
+        Modal.AddControl(Controls.Markup()
+            .AddLine($"[{ColorScheme.MutedMarkup}]Enter/G:Get Started  Esc:Close[/]")
+            .WithAlignment(HorizontalAlignment.Center)
+            .WithMargin(2, 1, 2, 0)
+            .StickyBottom()
+            .Build());
+
         // Bottom separator
         var sep2 = Controls.RuleBuilder()
             .WithColor(ColorScheme.RuleColor)
@@ -121,13 +129,6 @@ public class WelcomeModal : ModalBase<bool>
             .Column(col => col.Add(_getStartedButton))
             .Build();
         Modal.AddControl(buttonGrid);
-
-        // Bottom hint
-        Modal.AddControl(Controls.Markup()
-            .AddLine($"[{ColorScheme.MutedMarkup}]Enter/G:Get Started  Esc:Close[/]")
-            .WithAlignment(HorizontalAlignment.Center)
-            .StickyBottom()
-            .Build());
     }
 
     private void ToggleDontShowAgain()
