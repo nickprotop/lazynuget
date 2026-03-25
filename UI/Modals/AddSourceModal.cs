@@ -232,9 +232,13 @@ public class AddSourceModal : ModalBase<CustomNuGetSource?>
     protected override void SetInitialFocus()
     {
         if (_editMode)
-            _urlInput?.SetFocus(true, FocusReason.Programmatic);
+        {
+            if (_urlInput != null) Modal.FocusControl(_urlInput);
+        }
         else
-            _nameInput?.SetFocus(true, FocusReason.Programmatic);
+        {
+            if (_nameInput != null) Modal.FocusControl(_nameInput);
+        }
     }
 
     private void TrySubmit()

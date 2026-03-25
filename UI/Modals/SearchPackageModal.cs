@@ -315,7 +315,7 @@ public class SearchPackageModal : ModalBase<NuGetPackage?>
 
     protected override void SetInitialFocus()
     {
-        _searchInput?.SetFocus(true, FocusReason.Programmatic);
+        if (_searchInput != null) Modal.FocusControl(_searchInput);
     }
 
     protected override void OnKeyPressed(object? sender, KeyPressedEventArgs e)

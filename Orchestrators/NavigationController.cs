@@ -142,7 +142,7 @@ public class NavigationController
         }
 
         // Focus the left list by default (indicators update automatically)
-        _contextList?.SetFocus(true, FocusReason.Programmatic);
+        if (_contextList != null) _window?.FocusControl(_contextList);
     }
 
     public void RefreshCurrentView()
@@ -235,7 +235,7 @@ public class NavigationController
         }
 
         // Focus the left list by default (indicators update automatically)
-        _contextList?.SetFocus(true, FocusReason.Programmatic);
+        if (_contextList != null) _window?.FocusControl(_contextList);
     }
 
     public void RefreshInstalledPackages()

@@ -254,7 +254,7 @@ public class InstallPlanningModal : ModalBase<List<ProjectInfo>?>
 
     protected override void SetInitialFocus()
     {
-        _projectList?.SetFocus(true, FocusReason.Programmatic);
+        if (_projectList != null) Modal.FocusControl(_projectList);
     }
 
     private void PopulateProjectList()

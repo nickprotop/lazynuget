@@ -104,7 +104,7 @@ public class RecentFoldersModal : ModalBase<string?>
 
     protected override void SetInitialFocus()
     {
-        _folderList?.SetFocus(true, FocusReason.Programmatic);
+        if (_folderList != null) Modal.FocusControl(_folderList);
     }
 
     protected override void OnKeyPressed(object? sender, KeyPressedEventArgs e)

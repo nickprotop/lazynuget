@@ -213,7 +213,7 @@ public class VersionSelectorModal : ModalBase<string?>
 
     protected override void SetInitialFocus()
     {
-        _versionList?.SetFocus(true, FocusReason.Programmatic);
+        if (_versionList != null) Modal.FocusControl(_versionList);
     }
 
     protected override void OnKeyPressed(object? sender, KeyPressedEventArgs e)

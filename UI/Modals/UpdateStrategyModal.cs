@@ -169,7 +169,7 @@ public class UpdateStrategyModal : ModalBase<UpdateStrategy?>
 
     protected override void SetInitialFocus()
     {
-        _strategyDropdown?.SetFocus(true, FocusReason.Programmatic);
+        if (_strategyDropdown != null) Modal.FocusControl(_strategyDropdown);
     }
 
     protected override void OnKeyPressed(object? sender, KeyPressedEventArgs e)

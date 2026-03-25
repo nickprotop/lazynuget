@@ -188,7 +188,7 @@ public class LazyNuGetWindow : IDisposable
         {
             _windowSystem.AddWindow(_window);
             // Set initial focus to the left panel list
-            _contextList?.SetFocus(true, FocusReason.Programmatic);
+            if (_contextList != null) _window?.FocusControl(_contextList);
         }
     }
 
@@ -453,7 +453,7 @@ public class LazyNuGetWindow : IDisposable
                     _navigationController?.CurrentViewState ?? ViewState.Projects,
                     _navigationController?.SelectedProject);
 
-                // Panel focus indicators update automatically via FocusStateService.StateChanged event
+                // Panel focus indicators update automatically via FocusManager events
 
                 await Task.Delay(1000, ct);
             }
@@ -472,11 +472,7 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_window == null) return;
 
-        // Subscribe to FocusStateService for automatic panel indicator updates
-        _windowSystem.FocusStateService.StateChanged += (sender, e) =>
-        {
-            // Panel title focus indicators disabled
-        };
+        // Focus change events handled by FocusManager on _window
 
         _window.KeyPressed += (sender, e) =>
         {
@@ -505,7 +501,7 @@ public class LazyNuGetWindow : IDisposable
             // If list is focused, let it handle arrows itself
             if (e.KeyInfo.Key == ConsoleKey.UpArrow && e.KeyInfo.Modifiers == 0 && _contextList != null && _contextList.Items.Count > 0)
             {
-                var fc = _windowSystem.FocusStateService.FocusedControl;
+                var fc = _window?.FocusManager.FocusedControl;
                 if (fc is ListControl)
                 {
                     return; // Any focused ListControl handles its own arrows
@@ -519,7 +515,7 @@ public class LazyNuGetWindow : IDisposable
             }
             if (e.KeyInfo.Key == ConsoleKey.DownArrow && e.KeyInfo.Modifiers == 0 && _contextList != null && _contextList.Items.Count > 0)
             {
-                var fc = _windowSystem.FocusStateService.FocusedControl;
+                var fc = _window?.FocusManager.FocusedControl;
                 if (fc is ListControl)
                 {
                     return; // Any focused ListControl handles its own arrows
