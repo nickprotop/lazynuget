@@ -136,11 +136,8 @@ class Program
             var windowSystem = new ConsoleWindowSystem(
                 driver,
                 options: new ConsoleWindowSystemOptions(
-                    StatusBarOptions: new StatusBarOptions(
-                        ShowTaskBar: false,
-                        ShowBottomStatus: false
-                    )
-                ));
+                    ShowTopPanel: false,
+                    ShowBottomPanel: false));
 
             // Set default log level to Information
             windowSystem.LogService.MinimumLevel = SharpConsoleUI.Logging.LogLevel.Information;
