@@ -200,12 +200,12 @@ public class LazyNuGetWindow : IDisposable
             .AtPosition(0, 0)
             .WithSize(80, 24)
             .WithAsyncWindowThread(RefreshThreadAsync)
-            .Borderless()
+            .WithBorderStyle(BorderStyle.Single)
+            .WithBorderColor(ColorScheme.BorderColor)
+            .HideTitle()
+            .HideTitleButtons()
             .Resizable(false)
             .Movable(false)
-            .Closable(false)
-            .Minimizable(false)
-            .Maximizable(false)
             .Maximized()
             .Build();
 
