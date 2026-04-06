@@ -1,3 +1,4 @@
+using NuGet.Versioning;
 using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.Models;
@@ -34,9 +35,26 @@ public class PackageReference
         get
         {
             if (string.IsNullOrEmpty(LatestVersion)) return false;
-            if (!NuGet.Versioning.NuGetVersion.TryParse(Version, out var current)) return false;
-            if (!NuGet.Versioning.NuGetVersion.TryParse(LatestVersion, out var latest)) return false;
-            return latest > current;
+            if (!NuGetVersion.TryParse(LatestVersion, out var latest)) return false;
+
+            if (NuGetVersion.TryParse(Version, out var current))
+                return latest > current;
+
+            // Floating version (e.g. "9.*"): check if latest exceeds the pinned segments.
+            // "9.*" pins major=9, so 10.x is outdated. "9.0.*" pins major.minor=9.0, so 9.1 is outdated.
+            if (VersionRange.TryParse(Version, out var range) && range.Float != null)
+            {
+                var min = range.Float.MinVersion;
+                return range.Float.FloatBehavior switch
+                {
+                    NuGetVersionFloatBehavior.Minor => latest.Major > min.Major,
+                    NuGetVersionFloatBehavior.Patch => latest.Major > min.Major || latest.Minor > min.Minor,
+                    NuGetVersionFloatBehavior.Revision => latest.Major > min.Major || latest.Minor > min.Minor || latest.Patch > min.Patch,
+                    _ => latest > min
+                };
+            }
+
+            return false;
         }
     }
     public bool HasVulnerability { get; set; }

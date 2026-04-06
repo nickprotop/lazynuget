@@ -1,3 +1,4 @@
+using NuGet.Versioning;
 using SharpConsoleUI;
 using SharpConsoleUI.Core;
 using LazyNuGet.Models;
@@ -184,7 +185,9 @@ public class OperationOrchestrator
             }
 
             // Confirm version change with vulnerability warnings
-            var action = string.Compare(selectedVersion, package.Version, StringComparison.OrdinalIgnoreCase) > 0
+            var action = NuGetVersion.TryParse(selectedVersion, out var selVer)
+                && NuGetVersion.TryParse(package.Version, out var curVer)
+                && selVer > curVer
                 ? "upgrade" : "downgrade";
 
             // Update nugetData version to selected version for vulnerability check

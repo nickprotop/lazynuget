@@ -95,7 +95,12 @@ public class NuGetClientService : IDisposable
             RepositoryUrl = d.RepositoryUrl,
             Authors = d.Authors ?? new List<string>(),
             Tags = d.Tags ?? new List<string>(),
-            Versions = d.Versions?.Select(v => v.Version ?? string.Empty).ToList() ?? new List<string>(),
+            Versions = d.Versions?
+                .Select(v => (version: v.Version ?? string.Empty, parsed: NuGetVersion.TryParse(v.Version, out var nv) ? nv : null))
+                .Where(v => v.parsed != null)
+                .OrderByDescending(v => v.parsed)
+                .Select(v => v.version)
+                .ToList() ?? new List<string>(),
             IsVerified = d.Verified,
             VulnerabilityCount = d.Vulnerabilities?.Count ?? 0,
             Vulnerabilities = d.Vulnerabilities?.Select(v => new VulnerabilityInfo
@@ -232,13 +237,34 @@ public class NuGetClientService : IDisposable
     {
         try
         {
-            var latestVersion = await GetLatestVersionAsync(packageId, cancellationToken);
-            if (string.IsNullOrEmpty(latestVersion))
+            var allVersionStrings = await GetAllVersionStringsAsync(packageId, cancellationToken);
+            if (allVersionStrings == null || allVersionStrings.Count == 0)
                 return (false, null);
 
-            if (!NuGetVersion.TryParse(currentVersion, out var current) ||
-                !NuGetVersion.TryParse(latestVersion, out var latest))
+            // Find latest stable version (list is sorted descending)
+            var latestVersion = allVersionStrings.FirstOrDefault(v => !v.Contains('-'))
+                                ?? allVersionStrings[0];
+
+            if (!NuGetVersion.TryParse(latestVersion, out var latest))
                 return (false, null);
+
+            // Handle floating versions like "9.*"
+            if (!NuGetVersion.TryParse(currentVersion, out var current))
+            {
+                if (VersionRange.TryParse(currentVersion, out var range))
+                {
+                    // Resolve the float against all available versions
+                    var allParsed = allVersionStrings
+                        .Select(v => NuGetVersion.TryParse(v, out var nv) ? nv : null)
+                        .Where(v => v != null)
+                        .Cast<NuGetVersion>();
+                    var bestMatch = range.FindBestMatch(allParsed);
+                    if (bestMatch != null)
+                        return (latest > bestMatch, latestVersion);
+                }
+                return (false, null);
+            }
+
             var isOutdated = latest > current;
             return (isOutdated, latestVersion);
         }
@@ -246,6 +272,37 @@ public class NuGetClientService : IDisposable
         {
             return (false, null);
         }
+    }
+
+    private async Task<List<string>?> GetAllVersionStringsAsync(
+        string packageId,
+        CancellationToken cancellationToken)
+    {
+        var enabledSources = _repository.GetSources().Where(s => s.IsEnabled).ToList();
+
+        foreach (var source in enabledSources)
+        {
+            if (_failedSources.TryGetValue(source.Url, out var failedAt) &&
+                (DateTime.UtcNow - failedAt).TotalSeconds < 60)
+                continue;
+
+            try
+            {
+                var versions = await _repository.GetAllVersionsAsync(source, packageId, cancellationToken);
+                if (versions.Count == 0)
+                    continue;
+
+                _failedSources.TryRemove(source.Url, out _);
+                return versions;
+            }
+            catch (Exception ex)
+            {
+                _failedSources[source.Url] = DateTime.UtcNow;
+                _logService?.LogWarning($"Failed to check version on '{source.Name}' for {packageId}: {ex.Message}", "NuGet");
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
