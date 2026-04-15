@@ -47,13 +47,13 @@
   </ItemGroup>
 
   <ItemGroup Condition="!Exists('../ConsoleEx/SharpConsoleUI/SharpConsoleUI.csproj')">
-    <PackageReference Include="SharpConsoleUI" Version="2.4.58" />
+    <PackageReference Include="SharpConsoleUI" Version="2.4.59" />
   </ItemGroup>
 
   <!-- Additional dependencies -->
   <ItemGroup>
-    <PackageReference Include="NuGet.Versioning" Version="7.3.0" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.5" />
+    <PackageReference Include="NuGet.Versioning" Version="7.3.1" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.6" />
   </ItemGroup>
 
   <!-- Include files for NuGet package -->
