@@ -146,8 +146,13 @@ public class PackageCheckController : IDisposable
                 spinnerFrame++;
                 var message = tracker.GetProgressMessage(spinnerFrame);
 
-                _bottomHelpBar?.SetContent(new List<string> { message });
-                _window?.Invalidate(true);
+                // Timer callbacks fire on a timer thread and bypass the await
+                // machinery, so marshal UI mutations onto the UI thread explicitly.
+                _windowSystem.EnqueueOnUIThread(() =>
+                {
+                    _bottomHelpBar?.SetContent(new List<string> { message });
+                    _window?.Invalidate(true);
+                });
             }
             catch
             {

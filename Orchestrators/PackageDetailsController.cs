@@ -232,18 +232,23 @@ public class PackageDetailsController : IDisposable
                 _spinnerFrame++;
                 var spinnerChar = spinnerChars[_spinnerFrame % spinnerChars.Length];
 
-                msgControl?.SetContent(new List<string>
+                // Timer callbacks fire on a timer thread and bypass the await
+                // machinery, so marshal UI mutations onto the UI thread explicitly.
+                _window?.GetConsoleWindowSystem?.EnqueueOnUIThread(() =>
                 {
-                    $"[cyan1]{spinnerChar}[/] [grey70]{message}[/]"
+                    msgControl?.SetContent(new List<string>
+                    {
+                        $"[cyan1]{spinnerChar}[/] [grey70]{message}[/]"
+                    });
+
+                    // Animate progress bar (fake progress for visual feedback)
+                    if (progressBar != null)
+                    {
+                        progressBar.Value = (_spinnerFrame * 3) % 100;
+                    }
+
+                    _window?.Invalidate(true);
                 });
-
-                // Animate progress bar (fake progress for visual feedback)
-                if (progressBar != null)
-                {
-                    progressBar.Value = (_spinnerFrame * 3) % 100;
-                }
-
-                _window?.Invalidate(true);
             }
             catch
             {

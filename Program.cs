@@ -137,7 +137,8 @@ class Program
                 driver,
                 options: new ConsoleWindowSystemOptions(
                     ShowTopPanel: false,
-                    ShowBottomPanel: false));
+                    ShowBottomPanel: false,
+                    InstallSynchronizationContext: true));
 
             // Set default log level to Information
             windowSystem.LogService.MinimumLevel = SharpConsoleUI.Logging.LogLevel.Information;
