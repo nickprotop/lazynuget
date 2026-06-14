@@ -73,7 +73,7 @@
     "@types/vscode": "^1.96.0",
     "@vscode/vsce": "^3.0.0",
     "electron": "^40.8.5",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.1",
     "typescript": "^5.7.0"
   },
   "dependencies": {
