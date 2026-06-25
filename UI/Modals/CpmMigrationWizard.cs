@@ -256,7 +256,6 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
             _state = WizardState.ScanDone;
             UpdateAnalysisContent(BuildAnalysisSummary(_analysis));
             UpdateButtons();
-            Modal?.Invalidate(true);
         }
         catch (Exception ex)
         {
@@ -268,7 +267,6 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
     private void UpdateAnalysisContent(string markup)
     {
         _analysisContent?.SetContent(new List<string> { markup });
-        Modal?.Invalidate(true);
     }
 
     private string BuildAnalysisSummary(CpmAnalysisResult analysis)
@@ -341,7 +339,6 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
             _progressBar.Visible = true;
         }
 
-        Modal?.Invalidate(true);
 
         var progress = new Progress<string>(line =>
         {
@@ -364,7 +361,6 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
                 _logLines.RemoveAt(0);
 
             _migrationLog?.SetContent(new List<string> { string.Join("\n", _logLines) });
-            Modal?.Invalidate(true);
         }
     }
 
@@ -416,7 +412,6 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
         _resultsContent?.SetContent(new List<string> { BuildResultsSummary(result) });
 
         UpdateButtons();
-        Modal?.Invalidate(true);
     }
 
     private string BuildResultsSummary(CpmMigrationResult result)
@@ -473,7 +468,6 @@ public class CpmMigrationWizard : ModalBase<CpmMigrationResult?>
 
         // Show only Close button on results tab
         if (_viewResultsBtn != null) _viewResultsBtn.Visible = false;
-        Modal?.Invalidate(true);
     }
 
     private void HandleCancelOrClose()

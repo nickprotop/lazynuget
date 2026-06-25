@@ -151,7 +151,6 @@ public class PackageCheckController : IDisposable
                 _windowSystem.EnqueueOnUIThread(() =>
                 {
                     _bottomHelpBar?.SetContent(new List<string> { message });
-                    _window?.Invalidate(true);
                 });
             }
             catch
@@ -188,7 +187,6 @@ public class PackageCheckController : IDisposable
         }
 
         _bottomHelpBar?.SetContent(new List<string> { completionMessage });
-        _window?.Invalidate(true);
 
         // Restore help text after delay — capture view state now, not at restore time
         var trackerSnapshot = _checkProgressTracker;
@@ -204,7 +202,6 @@ public class PackageCheckController : IDisposable
                 && _getCurrentViewState() == viewStateAtCompletion)
             {
                 _statusBarManager?.UpdateHelpBar(viewStateAtCompletion, isLegacyAtCompletion);
-                _window?.Invalidate(true);
             }
         });
     }

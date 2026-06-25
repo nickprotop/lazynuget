@@ -247,7 +247,6 @@ public class PackageDetailsController : IDisposable
                         progressBar.Value = (_spinnerFrame * 3) % 100;
                     }
 
-                    _window?.Invalidate(true);
                 });
             }
             catch
