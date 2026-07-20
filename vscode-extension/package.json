@@ -68,10 +68,10 @@
     "rebuild": "electron-rebuild -f -w node-pty"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.3",
+    "@electron/rebuild": "^4.2.0",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.96.0",
-    "@vscode/vsce": "^3.0.0",
+    "@vscode/vsce": "^3.9.2",
     "electron": "^40.8.5",
     "esbuild": "^0.25.0",
     "typescript": "^5.7.0"
