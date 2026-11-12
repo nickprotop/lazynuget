@@ -3,20 +3,35 @@ using SharpConsoleUI.Builders;
 using SharpConsoleUI.Controls;
 using SharpConsoleUI.Layout;
 using SharpConsoleUI.Logging;
+using LazyNuGet.UI.Components;
 using LazyNuGet.UI.Utilities;
-using SharpConsoleUI.Parsing;
 
 namespace LazyNuGet.UI;
 
 /// <summary>
-/// Always-on-top window for viewing application logs in real-time
+/// Always-on-top window for viewing application logs in real-time.
 /// </summary>
+/// <remarks>
+/// Was a scrollable panel holding one <see cref="MarkupControl"/> built from the whole buffer,
+/// with the columns hand-padded and the entire control rebuilt on EVERY arriving entry. It is
+/// a table now: the columns are measured, a new entry appends one row, and the level filter
+/// works without reformatting anything.
+/// </remarks>
 public class LogViewerWindow
 {
     private readonly ConsoleWindowSystem _windowSystem;
+    private readonly LogTableDataSource _source = new();
     private Window? _window;
-    private ScrollablePanelControl? _logPanel;
-    private MarkupControl? _logContent;
+    private TableControl? _table;
+    private MarkupControl? _status;
+
+    /// <summary>Levels the F-key cycle steps through, quietest last.</summary>
+    private static readonly LogLevel[] LevelCycle =
+    {
+        LogLevel.Information, LogLevel.Warning, LogLevel.Error, LogLevel.Trace
+    };
+
+    private int _levelIndex;
 
     public LogViewerWindow(ConsoleWindowSystem windowSystem)
     {
@@ -28,44 +43,48 @@ public class LogViewerWindow
 
     private void BuildUI()
     {
-        _window = new Window(_windowSystem)
-        {
-            Title = "Log Viewer",
-            Width = 100,
-            Height = 30,
-            AlwaysOnTop = true
-        };
-
-        // Header
-        var header = Controls.Markup()
-            .AddLine("[cyan1 bold]Application Logs[/]")
-            .AddLine("[grey50]Press Esc or Ctrl+L to close · Auto-scrolls to latest entries[/]")
-            .WithMargin(1, 1, 1, 0)
-            .WithAlignment(HorizontalAlignment.Stretch)
+        _window = new WindowBuilder(_windowSystem)
+            .WithTitle("Logs")
+            .WithSize(120, 32)
+            .Centered()
+            .WithColors(Color.Grey85, ColorScheme.DetailsPanelBackground)
+            .WithActiveBorderColor(ColorScheme.AccentBorderColor)
+            .Resizable()
             .Build();
-        _window.AddControl(header);
+        _window.AlwaysOnTop = true;
 
-        // Separator
-        var separator = Controls.Rule();
-        separator.Color = ColorScheme.RuleColor;
-        _window.AddControl(separator);
+        _status = Controls.Markup(StatusLine())
+            .WithMargin(1, 0, 1, 0)
+            .Build();
 
-        // Scrollable log panel
-        _logPanel = Controls.ScrollablePanel()
+        _table = Controls.Table()
+            .WithDataSource(_source)
+            .WithMargin(1, 0, 1, 0)
+            .WithName("logTable")
+            .WithHorizontalAlignment(HorizontalAlignment.Stretch)
+            .WithVerticalAlignment(VerticalAlignment.Fill)
+            .ShowHeader()
+            .WithHeaderColors(Color.Grey93, ColorScheme.HeaderBackground)
+            .WithColors(Color.Grey85, ColorScheme.InsetBackground)
+            .WithBorderColor(ColorScheme.BorderColor)
+            .SingleLine()
+            .WithColumnSeparator('│', ColorScheme.RuleColor, padded: true)
+            .Interactive()
+            .Build();
+
+        // One grid: the status line is Auto, the table takes the rest. A stacked panel would
+        // have to be told the table's height; a grid row just gives it what is left.
+        var grid = Controls.Grid()
+            .Rows(GridLength.Auto(), GridLength.Star(1))
+            .Columns(GridLength.Star(1))
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill)
-            .WithBackgroundColor(ColorScheme.WindowBackground)
+            .Place(_status, row: 0, col: 0)
+            .Place(_table, row: 1, col: 0)
             .Build();
 
-        _logContent = Controls.Markup()
-            .AddLine("[grey50 italic]Waiting for log entries...[/]")
-            .WithMargin(1, 1, 1, 1)
-            .Build();
-        _logPanel.AddControl(_logContent);
+        _window.AddControl(grid);
 
-        _window.AddControl(_logPanel);
-
-        // Setup keyboard handler for Esc and Ctrl+L to close
         _window.KeyPressed += (s, e) =>
         {
             if (e.KeyInfo.Key == ConsoleKey.Escape ||
@@ -73,72 +92,61 @@ public class LogViewerWindow
             {
                 Close();
                 e.Handled = true;
+                return;
+            }
+
+            // F cycles the minimum level, so a noisy buffer can be cut down to warnings and
+            // errors without leaving the window.
+            if (e.KeyInfo.Key == ConsoleKey.F && e.KeyInfo.Modifiers == 0)
+            {
+                _levelIndex = (_levelIndex + 1) % LevelCycle.Length;
+                _source.MinimumLevel = LevelCycle[_levelIndex];
+                _status?.SetContent(new List<string> { StatusLine() });
+                e.Handled = true;
             }
         };
+    }
+
+    private string StatusLine()
+    {
+        string level = LevelCycle[_levelIndex] switch
+        {
+            LogLevel.Trace => "[grey54]all[/]",
+            LogLevel.Information => "[grey70]info and above[/]",
+            LogLevel.Warning => "[yellow]warnings and above[/]",
+            LogLevel.Error => "[red]errors only[/]",
+            _ => "[grey70]info and above[/]"
+        };
+
+        return $"[grey42]Showing[/] {level}   [grey42]F cycles the level · Esc closes[/]";
     }
 
     private void SubscribeToLogs()
     {
-        // Load existing log buffer first
-        RefreshLogDisplay();
+        _source.Reset(_windowSystem.LogService.GetAllLogs());
+        _source.MinimumLevel = LevelCycle[_levelIndex];
         _windowSystem.LogService.LogAdded += OnLogAdded;
+        ScrollToLatest();
     }
 
     private void OnLogAdded(object? sender, LogEntry entry)
     {
-        // When window is open, refresh display to show new log
-        if (_window != null && _logPanel != null)
+        if (_window == null || _table == null) return;
+
+        // The log service raises this from whatever thread logged, so the append has to be
+        // marshalled: the render loop reads the table concurrently.
+        _windowSystem.EnqueueOnUIThread(() =>
         {
-            RefreshLogDisplay();
-        }
+            _source.Append(entry);
+            ScrollToLatest();
+        });
     }
 
-    private string FormatLogEntry(LogEntry entry)
+    /// <summary>Keeps the newest entry in view, the way a tail would.</summary>
+    private void ScrollToLatest()
     {
-        var levelColor = entry.Level switch
-        {
-            LogLevel.Trace => "grey50",
-            LogLevel.Debug => "grey70",
-            LogLevel.Information => "cyan1",
-            LogLevel.Warning => "yellow",
-            LogLevel.Error => "red",
-            LogLevel.Critical => "red bold",
-            _ => "grey70"
-        };
-
-        var timestamp = entry.Timestamp.ToString("HH:mm:ss.fff");
-        var category = !string.IsNullOrEmpty(entry.Category) ? $"[{entry.Category}]" : "";
-        return $"[grey50]{timestamp}[/] [{levelColor}]{entry.Level,-11}[/] [grey70]{category,-12}[/] [{levelColor}]{MarkupParser.Escape(entry.Message)}[/]";
-    }
-
-    private void RefreshLogDisplay()
-    {
-        if (_logPanel == null) return;
-
-        // Get all logs from LogService buffer
-        var allLogs = _windowSystem.LogService.GetAllLogs();
-
-        // Build markup from LogService entries
-        var builder = Controls.Markup();
-        if (allLogs.Count == 0)
-        {
-            builder.AddLine("[grey50 italic]No log entries yet...[/]");
-        }
-        else
-        {
-            foreach (var entry in allLogs)
-            {
-                builder.AddLine(FormatLogEntry(entry));
-            }
-        }
-
-        // Replace content
-        _logPanel.ClearContents();
-        _logContent = builder.WithMargin(1, 1, 1, 1).Build();
-        _logPanel.AddControl(_logContent);
-
-        // Auto-scroll to bottom
-        _logPanel.ScrollToBottom();
+        if (_table == null || _source.RowCount == 0) return;
+        _table.SelectedRowIndex = _source.RowCount - 1;
     }
 
     private void Show()

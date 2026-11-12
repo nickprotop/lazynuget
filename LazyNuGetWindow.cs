@@ -37,6 +37,8 @@ public class LazyNuGetWindow : IDisposable
     private ScrollablePanelControl? _detailsPanel;
     private MarkupControl? _detailsContent;  // Content inside details panel
     private MarkupControl? _filterDisplay;  // Display filter text for installed packages
+    private GridControl? _mainGrid;         // The whole window: status / body / help, one grid
+    private HorizontalGridControl? _sidebarHost;  // Sidebar column host; its ActualWidth is the live sidebar width
 
     // State
     private string _currentFolderPath;
@@ -200,8 +202,11 @@ public class LazyNuGetWindow : IDisposable
             .AtPosition(0, 0)
             .WithSize(80, 24)
             .WithAsyncWindowThread(RefreshThreadAsync)
-            .WithBorderStyle(BorderStyle.Single)
-            .WithBorderColor(ColorScheme.BorderColor)
+            // Frameless, not Borderless: Borderless keeps the 1-cell frame reserved and paints
+            // it invisibly, Frameless reclaims it, so the grid fills the whole window rect.
+            // The title was already hidden, so the frame was costing two columns and two rows
+            // to draw nothing.
+            .Frameless()
             .HideTitle()
             .HideTitleButtons()
             .Resizable(false)
@@ -223,7 +228,6 @@ public class LazyNuGetWindow : IDisposable
             .Build();
 
         var topStatusBar = Controls.HorizontalGrid()
-            .StickyTop()
             .WithAlignment(HorizontalAlignment.Stretch)
             .Column(col => col.Add(_topStatusLeft))
             .Column(col => col.Add(_topStatusRight))
@@ -231,19 +235,12 @@ public class LazyNuGetWindow : IDisposable
         topStatusBar.BackgroundColor = ColorScheme.StatusBarBackground;
         topStatusBar.ForegroundColor = Color.Grey93;
 
-        _window.AddControl(topStatusBar);
-
-        _window.AddControl(Controls.RuleBuilder()
-            .StickyTop()
-            .WithColor(ColorScheme.RuleColor)
-            .Build());
-
         // Main grid - 2 panels
         _leftPanelHeader = Controls.Markup("[grey70]Projects[/]")
             .WithMargin(1, 0, 0, 0)
             .Build();
 
-        // Make header clickable to go back when in Packages view (shows ← arrow)
+        // Make header clickable to go back when in Packages view (shows back arrow)
         _leftPanelHeader.MouseClick += (s, e) =>
         {
             if (_navigationController?.CurrentViewState == ViewState.Packages)
@@ -289,33 +286,6 @@ public class LazyNuGetWindow : IDisposable
             .Build();
         _filterDisplay.Visible = false; // Hidden by default
 
-        var mainGrid = Controls.HorizontalGrid()
-            .WithVerticalAlignment(VerticalAlignment.Fill)
-            .WithAlignment(HorizontalAlignment.Stretch)
-            .Column(col => col
-                .Width(40)
-                .Add(_leftPanelHeader)
-                .Add(_filterDisplay)
-                .Add(_contextList))
-            .Column(col => col.Width(1)) // Spacing
-            .Column(col => col
-                .Add(_rightPanelHeader)
-                .Add(_detailsPanel))
-            .Build();
-
-        // Set panel backgrounds
-        if (mainGrid.Columns.Count > 0)
-            mainGrid.Columns[0].BackgroundColor = ColorScheme.SidebarBackground;
-        if (mainGrid.Columns.Count > 2)
-            mainGrid.Columns[2].BackgroundColor = ColorScheme.DetailsPanelBackground;
-
-        _window.AddControl(mainGrid);
-
-        _window.AddControl(Controls.RuleBuilder()
-            .StickyBottom()
-            .WithColor(ColorScheme.RuleColor)
-            .Build());
-
         // Bottom help bar (will be updated by StatusBarManager after initialization)
         _bottomHelpBar = Controls.Markup("[grey70]Loading...[/]")
             .WithAlignment(HorizontalAlignment.Left)
@@ -323,14 +293,125 @@ public class LazyNuGetWindow : IDisposable
             .Build();
 
         var bottomBar = Controls.HorizontalGrid()
-            .StickyBottom()
             .WithAlignment(HorizontalAlignment.Stretch)
             .Column(col => col.Add(_bottomHelpBar))
             .Build();
         bottomBar.BackgroundColor = ColorScheme.StatusBarBackground;
         bottomBar.ForegroundColor = ColorScheme.SecondaryText;
 
-        _window.AddControl(bottomBar);
+        // The sidebar and the details pane each need a column host so the panel background
+        // covers the whole track rather than just the controls in it.
+        _sidebarHost = Controls.HorizontalGrid()
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithVerticalAlignment(VerticalAlignment.Fill)
+            .Column(col => col
+                .Add(_leftPanelHeader)
+                .Add(_filterDisplay)
+                .Add(_contextList))
+            .Build();
+        _sidebarHost.BackgroundColor = ColorScheme.SidebarBackground;
+
+        var details = Controls.HorizontalGrid()
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithVerticalAlignment(VerticalAlignment.Fill)
+            .Column(col => col
+                .Add(_rightPanelHeader)
+                .Add(_detailsPanel))
+            .Build();
+        details.BackgroundColor = ColorScheme.DetailsPanelBackground;
+
+        // A hairline under the title row, so the status bar reads as chrome sitting above the
+        // work rather than as the first line of it. Dim on purpose: it separates, it should
+        // not draw the eye.
+        var titleRule = Controls.RuleBuilder()
+            .WithColor(ColorScheme.RuleColor)
+            .Build();
+
+        // One grid for the whole window: row 0 the path/clock status, row 1 the hairline,
+        // row 2 the two resizable panels, row 3 the help bar. The old layout was three stacked
+        // HorizontalGrids plus two Rule controls, with a literal width-1 spacer column
+        // between the panels and no way to resize them at all.
+        //
+        // BOTH body columns are Star on purpose. GridSplitterResize holds a Fixed track and
+        // only rescales the Star one (library test StarFixed_StarAbsorbs_FixedHeld), so a
+        // Fixed sidebar could not be dragged.
+        // Weight against the REAL width, not a constant. Star weights are a ratio: weighting a
+        // saved 66 against a hardcoded 120 gives 66/120 of the actual extent, so on a 200-wide
+        // terminal the sidebar came back at 110. The pool has to be the width the weights will
+        // actually be resolved against.
+        int pool = Math.Max(MinSidebarWidth + MinDetailsWidth, _windowSystem.DesktopDimensions.Width);
+        int sidebarCells = ResolveSidebarWidth(pool);
+        _mainGrid = Controls.Grid()
+            .Rows(GridLength.Auto(), GridLength.Auto(), GridLength.Star(1), GridLength.Auto())
+            .Columns(
+                GridLength.Star(sidebarCells, min: MinSidebarWidth),
+                GridLength.Star(Math.Max(1, pool - sidebarCells), min: MinDetailsWidth))
+            .ColumnSplitterAfter(0)
+            .WithAlignment(HorizontalAlignment.Stretch)
+            .WithVerticalAlignment(VerticalAlignment.Fill)
+            .Place(topStatusBar, row: 0, col: 0, colSpan: 2)
+            .Place(titleRule, row: 1, col: 0, colSpan: 2)
+            .Place(_sidebarHost, row: 2, col: 0)
+            .Place(details, row: 2, col: 1)
+            .Place(bottomBar, row: 3, col: 0, colSpan: 2)
+            .Build();
+
+        // Splitter colours, all three states set together on purpose.
+        //
+        // SplitterColor alone only dims the IDLE state: the focused and dragging paths ignore
+        // it and fall through to the theme accent. Setting just that one inverts the contrast,
+        // leaving a quiet splitter that turns BRIGHT when you are not touching it and dim when
+        // you are. Idle must be the quietest, focus a step up, drag the brightest.
+        _mainGrid.SplitterColor = ColorScheme.RuleColor;
+        _mainGrid.SplitterFocusedForeground = ColorScheme.BorderColor;
+        _mainGrid.SplitterDraggingForeground = ColorScheme.AccentBorderColor;
+
+        _window.AddControl(_mainGrid);
+    }
+
+    // Sidebar sizing. The old layout hardcoded Width(40) with no way to change it; these are
+    // the floors a splitter drag clamps against, and the width round-trips through settings.
+    private const int MinSidebarWidth = 24;
+    private const int MinDetailsWidth = 30;
+    private const int DefaultSidebarWidth = 40;
+
+    /// <summary>
+    /// The saved sidebar width in cells, or the default when there is none.
+    /// </summary>
+    /// <param name="pool">
+    /// The total width the column weights resolve against. A width saved on a wide terminal
+    /// must not wedge the details pane shut on a narrow one, so it is clamped to this.
+    /// </param>
+    private int ResolveSidebarWidth(int pool)
+    {
+        int saved = _configService?.Load().SidebarWidth ?? DefaultSidebarWidth;
+        return Math.Clamp(saved, MinSidebarWidth, Math.Max(MinSidebarWidth, pool - MinDetailsWidth));
+    }
+
+    /// <summary>
+    /// Writes the current sidebar width back to settings.
+    /// </summary>
+    /// <remarks>
+    /// There is no splitter-moved event to subscribe to, and none is needed: a grid splitter
+    /// drag writes the track definition itself, so the arranged width of the sidebar IS the
+    /// live size. Read it at save time rather than mirroring it into separate state.
+    ///
+    /// A width of 0 means "not painted yet", which must not be saved: it would come back as a
+    /// collapsed panel on the next run.
+    /// </remarks>
+    private void SaveSidebarWidth()
+    {
+        if (_configService == null || _sidebarHost == null) return;
+
+        int width = _sidebarHost.ActualWidth;
+        if (width <= 0) return;
+
+        int clamped = Math.Clamp(width, MinSidebarWidth, Math.Max(MinSidebarWidth, width));
+        var settings = _configService.Load();
+        if (settings.SidebarWidth == clamped) return;
+
+        settings.SidebarWidth = clamped;
+        _configService.Save(settings);
     }
 
     private void InitializeOrchestrators()
@@ -1419,6 +1500,10 @@ public class LazyNuGetWindow : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        // Save the sidebar width before the controls stop being painted: ActualWidth is the
+        // live size, and it reads 0 once the window is gone.
+        SaveSidebarWidth();
 
         // Dispose package check controller
         _packageCheckController?.Dispose();

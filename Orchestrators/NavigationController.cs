@@ -279,7 +279,9 @@ public class NavigationController
             if (needHeaders)
             {
                 var headerName = group.Key ?? "(no solution)";
-                var header = new ListItem($"[grey50]── {MarkupParser.Escape(headerName)} ──[/]");
+                // A solution header is a label, not a row of content: bold and dim rather
+                // than wrapped in dashes competing with the project names under it.
+                var header = new ListItem($"[grey54 bold]{MarkupParser.Escape(headerName.ToUpperInvariant())}[/]");
                 header.Tag = null; // Non-selectable sentinel
                 _contextList?.AddItem(header);
             }
@@ -289,16 +291,24 @@ public class NavigationController
                 var tfDisplay = project.TargetFrameworks.Any()
                     ? string.Join(" | ", project.TargetFrameworks)
                     : project.TargetFramework;
-                var legacyBadge = project.IsPackagesConfig ? "[grey50]legacy[/] " : string.Empty;
-                var displayText = $"{legacyBadge}[cyan1]{MarkupParser.Escape(project.Name)}[/]\n" +
-                                $"[grey70]  📦 {project.Packages.Count} packages · {MarkupParser.Escape(tfDisplay)}[/]";
+                var legacyBadge = project.IsPackagesConfig ? "[grey42]legacy[/] " : string.Empty;
+
+                // Every project name used to be the same bright cyan, which made the sidebar a
+                // wall of equal-weight colour with nothing to catch the eye. A project that
+                // needs attention is now the one that is coloured; the rest sit back in plain
+                // text, so scanning finds the work instead of reading all of it.
+                bool needsAttention = project.IsPackagesConfig || project.OutdatedCount > 0;
+                string nameColor = needsAttention ? "white bold" : "grey70";
+
+                var displayText = $"{legacyBadge}[{nameColor}]{MarkupParser.Escape(project.Name)}[/]\n" +
+                                $"[grey42]  {project.Packages.Count} pkg · {MarkupParser.Escape(tfDisplay)}[/]";
 
                 if (project.IsPackagesConfig)
-                    displayText += $"\n[grey50]  packages.config — press Ctrl+M to migrate[/]";
+                    displayText += $"\n[grey54]  packages.config · Ctrl+M to migrate[/]";
                 else if (project.OutdatedCount > 0)
-                    displayText += $"\n[yellow]  ⚠ {project.OutdatedCount} outdated[/]";
+                    displayText += $"\n[yellow]  \u2191 {project.OutdatedCount} outdated[/]";
                 else
-                    displayText += $"\n[green]  ✓ All up-to-date[/]";
+                    displayText += $"\n[grey35]  up to date[/]";
 
                 _contextList?.AddItem(new ListItem(displayText) { Tag = project });
             }
@@ -409,9 +419,11 @@ public class NavigationController
     {
         if (_leftPanelHeader == null) return;
 
-        // Add back arrow for Packages view
+        // In packages view the header IS the way back, so it names the key rather than just
+        // wearing an arrow. A bare arrow on a grey label reads as decoration; nothing said it
+        // was clickable or which key did the same thing.
         var displayText = _currentViewState == ViewState.Packages
-            ? $"[cyan1]←[/] [grey70]{content}[/]"
+            ? $"[cyan1]\u2190 Back[/] [grey42](Esc)[/]  [grey54]{content}[/]"
             : $"[grey70]{content}[/]";
 
         _leftPanelHeader.SetContent(new List<string> { displayText });

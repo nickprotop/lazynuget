@@ -1,5 +1,6 @@
 using System.Reflection;
 using SharpConsoleUI;
+using LazyNuGet.UI.Utilities;
 using SharpConsoleUI.Configuration;
 using SharpConsoleUI.Helpers;
 using SharpConsoleUI.Drivers;
@@ -112,9 +113,23 @@ class Program
 
         // Priority: CLI arg > current directory
         // Note: LastFolderPath is tracked for UI history, not used as default
-        string folderPath = args.Length > 0
-            ? args[0]
-            : Environment.CurrentDirectory;
+        // The first NON-FLAG argument is the folder: args[0] alone would read "--debug-socket"
+        // as a directory name and fail validation before the UI ever starts.
+        string? folderArg = null;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i].StartsWith('-'))
+            {
+                // --debug-socket takes an optional value; skip it so it is not read as a path.
+                if (args[i] == "--debug-socket" && i + 1 < args.Length && !args[i + 1].StartsWith('-'))
+                    i++;
+                continue;
+            }
+            folderArg = args[i];
+            break;
+        }
+
+        string folderPath = folderArg ?? Environment.CurrentDirectory;
 
         // Resolve to absolute path to avoid issues with relative paths
         folderPath = Path.GetFullPath(folderPath);
@@ -133,12 +148,42 @@ class Program
                 RenderMode = RenderMode.Buffer
             };
             var driver = new NetConsoleDriver(driverOptions);
+            // --debug-socket opens the diagnostics socket cxdbg attaches to. Set in code on
+            // purpose: the SHARPCONSOLEUI_DIAGNOSTICS_SOCKET route prompts for consent, and
+            // the prompt has to happen before the driver paints, which is not reachable from
+            // here. A flag cannot be inherited from a shell or a unit file, so it can only be
+            // present because someone typed it.
+            string? debugSocket = null;
+            int socketArg = Array.FindIndex(args, a => a == "--debug-socket");
+            if (socketArg >= 0)
+            {
+                debugSocket = socketArg + 1 < args.Length && !args[socketArg + 1].StartsWith('-')
+                    ? args[socketArg + 1]
+                    : "/tmp/lazynuget.sock";
+            }
+
             var windowSystem = new ConsoleWindowSystem(
                 driver,
                 options: new ConsoleWindowSystemOptions(
                     ShowTopPanel: false,
                     ShowBottomPanel: false,
-                    InstallSynchronizationContext: true));
+                    InstallSynchronizationContext: true,
+                    DiagnosticsSocket: debugSocket));
+
+            // The stock theme pins scrollbar thumbs to Cyan1, which against these dark greys is
+            // the loudest thing on screen: a full-height accent bar down the sidebar, brighter
+            // than any actual content. A scrollbar reports position; it should not lead the
+            // page. Focused stays a step above unfocused so it still shows which pane scrolls.
+            // ITheme exposes these read-only; ThemeBase is where they are settable.
+            if (windowSystem.Theme is SharpConsoleUI.Themes.ThemeBase theme)
+            {
+            theme.ScrollbarThumbColor = ColorScheme.ScrollbarThumbColor;
+            theme.ScrollbarThumbUnfocusedColor = ColorScheme.ScrollbarThumbUnfocusedColor;
+            theme.ScrollbarTrackColor = ColorScheme.ScrollbarTrackColor;
+            theme.ScrollbarTrackUnfocusedColor = ColorScheme.ScrollbarTrackColor;
+            theme.TableScrollbarThumbColor = ColorScheme.ScrollbarThumbColor;
+            theme.TableScrollbarTrackColor = ColorScheme.ScrollbarTrackColor;
+            }
 
             // Set default log level to Information
             windowSystem.LogService.MinimumLevel = SharpConsoleUI.Logging.LogLevel.Information;

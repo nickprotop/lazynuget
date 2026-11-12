@@ -24,6 +24,13 @@ public class LazyNuGetSettings
     public List<CustomNuGetSource> CustomSources { get; set; } = new();
     public Dictionary<string, bool> SourceOverrides { get; set; } = new();
     public bool ShowWelcomeOnStartup { get; set; } = true;
+
+    /// <summary>
+    /// Width in cells of the project/package sidebar, as left by the last splitter drag.
+    /// Null means "never dragged": the layout picks its own default rather than treating
+    /// 0 as a real width and collapsing the panel on first run.
+    /// </summary>
+    public int? SidebarWidth { get; set; }
 }
 
 /// <summary>

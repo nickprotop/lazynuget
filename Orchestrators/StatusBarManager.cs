@@ -94,6 +94,8 @@ public class StatusBarManager
 
     public void UpdateHeadersForPackages(ProjectInfo project)
     {
+        // Note: NavigationController.UpdateLeftPanelHeader runs after this and overwrites the
+        // left header, so the back affordance lives there, not here.
         _leftPanelHeader?.SetContent(new List<string>
         {
             $"[grey70]{MarkupParser.Escape(project.Name)} > Packages[/]"

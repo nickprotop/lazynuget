@@ -30,18 +30,22 @@ public static class InteractiveDashboardBuilder
         var frameworkDisplay = project.TargetFrameworks.Any()
             ? string.Join(" | ", project.TargetFrameworks)
             : project.TargetFramework;
+        // Name and framework on one line: the framework is metadata about the project, not a
+        // third fact of equal weight. Path below, dimmed, because it is for confirming you are
+        // on the right project rather than for reading.
         var header = Controls.Markup()
-            .AddLine($"[cyan1 bold]Project: {MarkupParser.Escape(project.Name)}[/]")
-            .AddLine($"[grey70]Path: {MarkupParser.Escape(ShortenPath(project.FilePath))}[/]")
-            .AddLine($"[grey70]Framework: {MarkupParser.Escape(frameworkDisplay)}[/]")
-            .AddEmptyLine()
+            .AddLine($"[cyan1 bold]{MarkupParser.Escape(project.Name)}[/]  [grey50]{MarkupParser.Escape(frameworkDisplay)}[/]")
+            .AddLine($"[grey50]{MarkupParser.Escape(ShortenPath(project.FilePath))}[/]")
             .WithMargin(1, 1, 0, 0)
             .Build();
         controls.Add(header);
 
-        // Stats cards
-        var statsCard = BuildStatsCard(project, outdatedPackages);
-        controls.Add(statsCard);
+        // Stats as a single line. This was a 3-column TableControl of three single numbers,
+        // five rows tall and 39 cells wide in a 133-wide pane: a toy table where a strip says
+        // the same thing. Counts are coloured only when they are non-zero, so a clean project
+        // reads as quiet rather than as three green badges.
+        var statsStrip = BuildStatsStrip(project, outdatedPackages);
+        controls.Add(statsStrip);
 
         // CPM migration hint: shown whenever any package still has an inline Version attribute,
         // including projects that are under a CPM folder but haven't had their versions centralized yet.
@@ -59,25 +63,17 @@ public static class InteractiveDashboardBuilder
         separator.Margin = new Margin(1, 0, 1, 0);
         controls.Add(separator);
 
-        // Empty markup above toolbar for background extension
-        var toolbarTop = Controls.Markup()
-            .AddEmptyLine()
-            .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
-            .WithMargin(1, 0, 1, 0)
-            .Build();
-        controls.Add(toolbarTop);
 
         // Build bulk action buttons upfront (initially hidden) using closures
-        // to capture the list control reference after it's created below.
-        ListControl? packageList = null;
+        // to capture the table reference after it's created below.
+        TableControl? packageTable = null;
+        var packageSource = new PackageTableDataSource(project.Packages);
 
         var updateSelectedBtn = Controls.Button("[cyan1]Update Selected[/] [grey78](Ctrl+S)[/]")
             .OnClick((_, _) =>
             {
-                if (packageList == null) return;
-                var selected = packageList.GetCheckedItems()
-                    .Select(i => (PackageReference)i.Tag!)
+                if (packageTable == null) return;
+                var selected = SelectedPackages(packageTable, packageSource)
                     .Where(p => p.IsOutdated)
                     .ToList();
                 if (selected.Any())
@@ -92,10 +88,8 @@ public static class InteractiveDashboardBuilder
         var removeSelectedBtn = Controls.Button("[red1]Remove Selected[/] [grey78](Ctrl+Del)[/]")
             .OnClick((_, _) =>
             {
-                if (packageList == null) return;
-                var selected = packageList.GetCheckedItems()
-                    .Select(i => (PackageReference)i.Tag!)
-                    .ToList();
+                if (packageTable == null) return;
+                var selected = SelectedPackages(packageTable, packageSource);
                 if (selected.Any())
                     onRemoveSelected(selected);
             })
@@ -106,7 +100,7 @@ public static class InteractiveDashboardBuilder
             .Build();
 
         var deselectAllBtn = Controls.Button("[grey78]Deselect All[/]")
-            .OnClick((_, _) => packageList?.SetAllChecked(false))
+            .OnClick((_, _) => packageTable?.ClearSelection())
             .WithBackgroundColor(Color.Grey30)
             .WithForegroundColor(Color.Grey93)
             .WithFocusedBackgroundColor(Color.Grey50)
@@ -118,31 +112,21 @@ public static class InteractiveDashboardBuilder
             outdatedPackages, onViewPackages, onUpdateAll, onRestore, onDeps);
         controls.Add(toolbar);
 
-        // Empty markup below toolbar for background extension
-        var toolbarBottom = Controls.Markup()
-            .AddEmptyLine()
-            .WithAlignment(HorizontalAlignment.Stretch)
-            .WithBackgroundColor(ColorScheme.DetailsPanelBackground)
-            .WithMargin(1, 0, 1, 0)
-            .Build();
-        controls.Add(toolbarBottom);
+        // No rule after the toolbar: the table's own frame below is the next boundary, and a
+        // rule plus a frame two rows apart read as clutter rather than structure.
 
-        // Separator after toolbar
-        var separatorAfter = Controls.Rule();
-        separatorAfter.Margin = new Margin(1, 0, 1, 0);
-        controls.Add(separatorAfter);
-
-        // Hint line above the checkbox list
+        // One dim hint line above the table. The CPM warning is a real caveat, so it stays,
+        // but it reads as a second clause rather than a second banner.
         var hintBuilder = Controls.Markup()
-            .AddLine("[grey50]Space: toggle · Tab: reach bulk actions[/]");
+            .AddLine("[grey50]Space toggles · Tab reaches the bulk actions[/]");
         if (project.IsCpmEnabled)
-            hintBuilder.AddLine("[grey50]⚠ CPM: updates write to [/][cyan1]Directory.Packages.props[/][grey50] and affect all projects[/]");
-        var hint = hintBuilder.WithMargin(1, 0, 1, 0).Build();
+            hintBuilder.AddLine("[grey50]CPM: updates write to [/][grey70]Directory.Packages.props[/][grey50] and affect every project[/]");
+        var hint = hintBuilder.WithMargin(1, 1, 1, 0).Build();
         controls.Add(hint);
 
-        // Build checkbox package list
-        packageList = BuildCheckboxPackageList(project);
-        controls.Add(packageList);
+        // Build the package table
+        packageTable = BuildPackageTable(project, packageSource);
+        controls.Add(packageTable);
 
         // Separator above secondary action bar (hidden until items are checked)
         var selectionSeparator = Controls.Rule();
@@ -155,20 +139,22 @@ public static class InteractiveDashboardBuilder
         selectionToolbar.Visible = false;
         controls.Add(selectionToolbar);
 
-        // Wire up CheckedItemsChanged to show/hide the secondary action bar
-        packageList.CheckedItemsChanged += (_, _) =>
+        // Show/hide the secondary action bar with the selection. Checks ARE the selection in
+        // checkbox mode, so MultiSelectionChanged is the signal; its payload is the count.
+        packageTable.MultiSelectionChanged += (_, count) =>
         {
-            var anyChecked = packageList.GetCheckedItems().Any();
+            bool anyChecked = count > 0;
             selectionSeparator.Visible = anyChecked;
             selectionToolbar.Visible = anyChecked;
         };
 
-        // Double-click opens the package in the packages view
+        // Enter or double-click opens the package in the packages view. RowActivated covers
+        // both, where the old MouseDoubleClick wiring covered only the mouse.
         if (onOpenPackage != null)
         {
-            packageList.MouseDoubleClick += (_, _) =>
+            packageTable.RowActivated += (_, rowIndex) =>
             {
-                if (packageList.SelectedItem?.Tag is PackageReference pkg)
+                if (packageSource.PackageAt(rowIndex) is PackageReference pkg)
                     onOpenPackage(pkg);
             };
         }
@@ -176,99 +162,95 @@ public static class InteractiveDashboardBuilder
         return controls;
     }
 
-    private static IWindowControl BuildStatsCard(ProjectInfo project, List<PackageReference> outdatedPackages)
+    /// <summary>
+    /// The project's counts, as one line.
+    /// </summary>
+    private static IWindowControl BuildStatsStrip(ProjectInfo project, List<PackageReference> outdatedPackages)
     {
-        var total = project.Packages.Count;
-        var outdated = outdatedPackages.Count;
-        var vulnerable = project.VulnerableCount;
+        int total = project.Packages.Count;
+        int outdated = outdatedPackages.Count;
+        int vulnerable = project.VulnerableCount;
 
-        return Controls.Table()
-            .AddColumn("📦 [cyan1]Total[/]", TextJustification.Center, 11)
-            .AddColumn("⚠ [yellow]Outdated[/]", TextJustification.Center, 11)
-            .AddColumn("✓ [grey70]Vuln[/]", TextJustification.Center, 11)
-            .AddRow($"[cyan1 bold]{total}[/]", $"[yellow bold]{outdated}[/]", $"[red bold]{vulnerable}[/]")
-            .WithBorderColor(Color.Grey50)
-            .SingleLine()
-            .ShowHeader()
-            .WithHeaderColors(Color.Grey70, Color.Black)
-            .WithBackgroundColor(null)
-            .WithMargin(1, 0, 0, 0)
-            .WithWidth(40)
+        // A zero stays grey: only a count that needs attention earns a colour.
+        string outdatedPart = outdated > 0
+            ? $"[yellow bold]{outdated}[/][grey70] outdated[/]"
+            : "[grey50]0 outdated[/]";
+        string vulnerablePart = vulnerable > 0
+            ? $"[red bold]{vulnerable}[/][grey70] vulnerable[/]"
+            : "[grey50]0 vulnerable[/]";
+
+        return Controls.Markup()
+            .AddLine($"[cyan1 bold]{total}[/][grey70] packages[/]    {outdatedPart}    {vulnerablePart}")
+            .WithMargin(1, 1, 1, 1)
             .Build();
     }
 
-    private static ListControl BuildCheckboxPackageList(ProjectInfo project)
+    /// <summary>
+    /// The package list, as a real table over a data source.
+    /// </summary>
+    /// <remarks>
+    /// This was a <c>ListControl</c> whose <c>ItemFormatter</c> hand-rolled a three-column
+    /// layout: a magic <c>listOverhead = 9</c>, <c>PadRight</c> for alignment, manual
+    /// truncation with an ellipsis, and <c>string.Length</c> as a display width. Status, name
+    /// and version are columns, so they are columns now, measured by the table.
+    ///
+    /// In checkbox mode checks ARE the multi-selection: a data source has no
+    /// <see cref="TableRow"/> objects to carry <c>IsChecked</c>, so the checkbox column paints
+    /// from the selected indices and <see cref="SelectedPackages"/> maps those back through the
+    /// source. Space toggles a row; Ctrl+A takes all.
+    /// </remarks>
+    private static TableControl BuildPackageTable(ProjectInfo project, PackageTableDataSource source)
     {
-        if (project.Packages.Count == 0)
-        {
-            // Return an empty, non-interactive list with a placeholder
-            var empty = ListControl.Create()
-                .AddItem("[grey50]No packages installed[/]")
-                .WithMargin(1, 1, 1, 0)
-                .WithName("packageCheckboxList")
-                .WithAlignment(HorizontalAlignment.Stretch)
-                .WithVerticalAlignment(VerticalAlignment.Fill)
-                .Selectable(false)
-                .Build();
-            return empty;
-        }
+        int outdated = project.Packages.Count(p => p.IsOutdated);
+        string title = outdated > 0
+            ? $" Packages ({project.Packages.Count}) \u00b7 {outdated} outdated "
+            : $" Packages ({project.Packages.Count}) ";
 
-        var builder = ListControl.Create()
-            .WithCheckboxMode()
-            .WithTitle($"Packages ({project.Packages.Count})")
+        var table = Controls.Table()
+            .WithDataSource(source)
             .WithMargin(1, 1, 1, 0)
-            .WithName("packageCheckboxList")
-            .WithAlignment(HorizontalAlignment.Stretch)
-            .WithVerticalAlignment(VerticalAlignment.Fill);
+            .WithName("packageTable")
+            .WithHorizontalAlignment(HorizontalAlignment.Stretch)
+            // No Fill and no explicit height: the control measures title + border + header +
+            // rows itself. Fill gave two packages twenty-five empty bordered rows, and my own
+            // chrome arithmetic was off by one and ate a data row. Let it measure.
+            // Chrome: a framed, titled table reads as one object. Borderless with a bare
+            // header left it floating in the pane with nothing tying the columns together.
+            .Rounded()
+            .WithBorderColor(ColorScheme.BorderColor)
+            .WithTitle(title, TextJustification.Left)
+            .ShowHeader()
+            // The header sits one surface step forward from the table body, which in turn sits
+            // forward from the pane: three steps so the eye reads depth rather than one flat
+            // field of grey.
+            .WithHeaderColors(Color.Grey93, ColorScheme.HeaderBackground)
+            .WithColors(Color.Grey85, ColorScheme.InsetBackground)
+            // Vertical rules between columns, so a wide pane still reads as a grid rather
+            // than words adrift in whitespace.
+            .WithColumnSeparator('\u2502', ColorScheme.RuleColor, padded: true)
+            .Interactive()
+            .WithSorting()
+            .WithCheckboxMode()
+            .WithMultiSelect()
+            .Build();
 
-        // Precompute max name length for alignment across all packages
-        int maxNameLength = project.Packages.Max(p => p.Id.Length);
+        return table;
+    }
 
-        foreach (var pkg in project.Packages)
-        {
-            builder.AddItem(new ListItem(MarkupParser.Escape(pkg.Id)) { Tag = pkg });
-        }
-
-        var list = builder.Build();
-
-        // Use ItemFormatter to dynamically format items based on actual rendered width.
-        // The formatter is called during paint after ActualWidth is set, so it adapts to resizes.
-        // Available text width: ActualWidth - margins(1+1) - checkboxIndicator(5) - padding(2)
-        const int listOverhead = 9; // margins + checkbox indicator + internal padding
-        const int statusPrefixWidth = 2; // "⚠ " or "✓ " visible chars
-        const int columnGap = 1; // space between name and version
-
-        list.ItemFormatter = (item, isSelected, hasFocus) =>
-        {
-            if (item.Tag is not PackageReference pkg)
-                return item.Text;
-
-            string statusPrefix = pkg.IsOutdated ? "[yellow]⚠[/] " : "[green]✓[/] ";
-
-            string versionText = pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion)
-                ? $"{pkg.Version} → {pkg.LatestVersion}"
-                : pkg.Version;
-            int versionVisibleWidth = versionText.Length;
-            string versionMarkup = pkg.IsOutdated && !string.IsNullOrEmpty(pkg.LatestVersion)
-                ? $"[grey70]{MarkupParser.Escape(pkg.Version)}[/] [yellow]→ {MarkupParser.Escape(pkg.LatestVersion)}[/]"
-                : $"[grey70]{MarkupParser.Escape(pkg.Version)}[/]";
-
-            int availableWidth = list.ActualWidth - listOverhead;
-            // Name column gets whatever space remains after status prefix, version, and gap
-            int nameColumnWidth = availableWidth - statusPrefixWidth - versionVisibleWidth - columnGap;
-
-            // Cap at the longest package name — don't let the name column consume extra space
-            nameColumnWidth = Math.Clamp(nameColumnWidth, 1, maxNameLength);
-
-            string name = MarkupParser.Escape(pkg.Id);
-            string paddedName = pkg.Id.Length <= nameColumnWidth
-                ? name.PadRight(nameColumnWidth)
-                : MarkupParser.Escape(pkg.Id[..(nameColumnWidth - 1)]) + "…";
-
-            return $"{statusPrefix}{paddedName} {versionMarkup}";
-        };
-
-        return list;
+    /// <summary>
+    /// The packages the user has ticked, read from the multi-selection.
+    /// </summary>
+    /// <remarks>
+    /// <c>GetCheckedRows()</c> cannot serve here: it reads <c>TableRow.IsChecked</c>, and a
+    /// table over a data source has no row objects, so it always comes back empty.
+    /// </remarks>
+    private static List<PackageReference> SelectedPackages(
+        TableControl table, PackageTableDataSource source)
+    {
+        return table.GetSelectedIndices()
+            .Select(source.PackageAt)
+            .OfType<PackageReference>()
+            .ToList();
     }
 
     private static IWindowControl BuildActionToolbar(
@@ -278,8 +260,11 @@ public static class InteractiveDashboardBuilder
         Action onRestore,
         Action? onDeps)
     {
-        // View Packages button
-        var viewBtn = Controls.Button("[cyan1]View Packages[/] [grey78](Enter)[/]")
+        // "View Packages" said nothing about what it does: the dashboard already SHOWS the
+        // packages, so the button appeared to be a no-op. What it actually does is move the
+        // sidebar into this project so you can walk its packages one at a time and read each
+        // one's details. Name the destination, not the noun.
+        var viewBtn = Controls.Button("[cyan1]Browse packages[/] [grey78](Enter)[/]")
             .OnClick((s, e) => onViewPackages())
             .WithMargin(1, 0, 0, 0)
             .WithBackgroundColor(Color.Grey30)
