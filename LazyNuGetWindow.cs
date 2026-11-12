@@ -32,6 +32,8 @@ public class LazyNuGetWindow : IDisposable
     private MarkupControl? _topStatusRight;
     private MarkupControl? _bottomHelpBar;
     private MarkupControl? _leftPanelHeader;
+    private ButtonControl? _backButton;   // Real control, not a clickable label; packages view only
+    private RuleControl? _backRule;       // Hairline under the button row, shown with it
     private MarkupControl? _rightPanelHeader;
     private ListControl? _contextList;
     private ScrollablePanelControl? _detailsPanel;
@@ -240,7 +242,29 @@ public class LazyNuGetWindow : IDisposable
             .WithMargin(1, 0, 0, 0)
             .Build();
 
-        // Make header clickable to go back when in Packages view (shows back arrow)
+        // A real button with a raised face, not a clickable label. The back route used to be
+        // the header markup itself: nothing said it was pressable, it could not take focus,
+        // and it could not be reached by Tab. Hidden in projects view, where there is no back.
+        _backButton = Controls.Button("[cyan1]\u2190 Back to projects[/] [grey54](Esc)[/]")
+            .OnClick((_, _) => _navigationController?.SwitchToProjectsView())
+            .WithMargin(1, 0, 1, 0)
+            .WithBackgroundColor(ColorScheme.ButtonFace)
+            .WithForegroundColor(Color.Grey93)
+            .WithFocusedBackgroundColor(ColorScheme.ButtonFaceFocused)
+            .WithFocusedForegroundColor(Color.White)
+            .Build();
+        _backButton.Visible = false;
+
+        // Closes the button row off from the list below it, so the button reads as its own
+        // band rather than as the first entry of the list. Hidden with the button, since a
+        // rule under nothing is just a stray line.
+        _backRule = Controls.RuleBuilder()
+            .WithColor(ColorScheme.RuleColor)
+            .Build();
+        _backRule.Visible = false;
+
+        // The header stays clickable too: it was the only route before, and someone who
+        // learned it should not lose it.
         _leftPanelHeader.MouseClick += (s, e) =>
         {
             if (_navigationController?.CurrentViewState == ViewState.Packages)
@@ -256,7 +280,7 @@ public class LazyNuGetWindow : IDisposable
             .WithVerticalAlignment(VerticalAlignment.Fill)
             .WithColors(Color.Grey93, ColorScheme.SidebarBackground)
             .WithFocusedColors(Color.Grey93, ColorScheme.SidebarBackground)
-            .WithHighlightColors(Color.White, Color.Grey35)
+            .WithHighlightColors(Color.White, ColorScheme.SelectionBackground)
             .SimpleMode()
             .Build();
 
@@ -305,6 +329,8 @@ public class LazyNuGetWindow : IDisposable
             .WithAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill)
             .Column(col => col
+                .Add(_backButton)
+                .Add(_backRule)
                 .Add(_leftPanelHeader)
                 .Add(_filterDisplay)
                 .Add(_contextList))
@@ -327,8 +353,14 @@ public class LazyNuGetWindow : IDisposable
             .WithColor(ColorScheme.RuleColor)
             .Build();
 
-        // One grid for the whole window: row 0 the path/clock status, row 1 the hairline,
-        // row 2 the two resizable panels, row 3 the help bar. The old layout was three stacked
+        var bottomRule = Controls.RuleBuilder()
+            .WithColor(ColorScheme.RuleColor)
+            .Build();
+
+        // One grid for the whole window: row 0 the path/clock status, row 1 a hairline,
+        // row 2 the two resizable panels, row 3 a hairline, row 4 the help bar. The two
+        // rules are the same weight on purpose: they bracket the work area, so the chrome
+        // top and bottom reads as one frame rather than two different edges. The old layout was three stacked
         // HorizontalGrids plus two Rule controls, with a literal width-1 spacer column
         // between the panels and no way to resize them at all.
         //
@@ -342,7 +374,7 @@ public class LazyNuGetWindow : IDisposable
         int pool = Math.Max(MinSidebarWidth + MinDetailsWidth, _windowSystem.DesktopDimensions.Width);
         int sidebarCells = ResolveSidebarWidth(pool);
         _mainGrid = Controls.Grid()
-            .Rows(GridLength.Auto(), GridLength.Auto(), GridLength.Star(1), GridLength.Auto())
+            .Rows(GridLength.Auto(), GridLength.Auto(), GridLength.Star(1), GridLength.Auto(), GridLength.Auto())
             .Columns(
                 GridLength.Star(sidebarCells, min: MinSidebarWidth),
                 GridLength.Star(Math.Max(1, pool - sidebarCells), min: MinDetailsWidth))
@@ -353,7 +385,8 @@ public class LazyNuGetWindow : IDisposable
             .Place(titleRule, row: 1, col: 0, colSpan: 2)
             .Place(_sidebarHost, row: 2, col: 0)
             .Place(details, row: 2, col: 1)
-            .Place(bottomBar, row: 3, col: 0, colSpan: 2)
+            .Place(bottomRule, row: 3, col: 0, colSpan: 2)
+            .Place(bottomBar, row: 4, col: 0, colSpan: 2)
             .Build();
 
         // Splitter colours, all three states set together on purpose.
@@ -516,6 +549,10 @@ public class LazyNuGetWindow : IDisposable
             _operationOrchestrator,
             proj => HandleMigrateProjectAsync(proj),
             proj => ReloadProjectAndRefreshView(proj));
+
+        // Hand the button over so the controller shows it only in packages view.
+        _navigationController.BackButton = _backButton;
+        _navigationController.BackRule = _backRule;
     }
 
     private async Task RefreshThreadAsync(Window window, CancellationToken ct)

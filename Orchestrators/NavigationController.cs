@@ -16,6 +16,8 @@ public class NavigationController
 {
     private readonly ListControl? _contextList;
     private readonly MarkupControl? _leftPanelHeader;
+    private ButtonControl? _backButton;
+    private RuleControl? _backRule;
     private readonly StatusBarManager? _statusBarManager;
     private readonly PackageFilterController? _filterController;
     private readonly PackageDetailsController? _packageDetailsController;
@@ -89,6 +91,11 @@ public class NavigationController
 
         _currentViewState = ViewState.Projects;
         _selectedProject = null;
+
+        // There is no back from the projects view. Applied here as well as in
+        // UpdateLeftPanelHeader, because this path sets the header itself rather than going
+        // through that method, so the toggle there never runs for this transition.
+        ApplyBackVisibility();
 
         // Cancel any in-flight NuGet fetch so it cannot overwrite the dashboard
         _packageDetailsController?.CancelCurrentLoad();
@@ -301,14 +308,14 @@ public class NavigationController
                 string nameColor = needsAttention ? "white bold" : "grey70";
 
                 var displayText = $"{legacyBadge}[{nameColor}]{MarkupParser.Escape(project.Name)}[/]\n" +
-                                $"[grey42]  {project.Packages.Count} pkg · {MarkupParser.Escape(tfDisplay)}[/]";
+                                $"[grey54]  {project.Packages.Count} pkg · {MarkupParser.Escape(tfDisplay)}[/]";
 
                 if (project.IsPackagesConfig)
                     displayText += $"\n[grey54]  packages.config · Ctrl+M to migrate[/]";
                 else if (project.OutdatedCount > 0)
                     displayText += $"\n[yellow]  \u2191 {project.OutdatedCount} outdated[/]";
                 else
-                    displayText += $"\n[grey35]  up to date[/]";
+                    displayText += $"\n[grey42]  up to date[/]";
 
                 _contextList?.AddItem(new ListItem(displayText) { Tag = project });
             }
@@ -415,16 +422,43 @@ public class NavigationController
         return 0;
     }
 
+    /// <summary>The back button, shown only in packages view.</summary>
+    public ButtonControl? BackButton
+    {
+        get => _backButton;
+        set { _backButton = value; ApplyBackVisibility(); }
+    }
+
+    /// <summary>The hairline under the back button. Shares the button's visibility.</summary>
+    public RuleControl? BackRule
+    {
+        get => _backRule;
+        set { _backRule = value; ApplyBackVisibility(); }
+    }
+
+    /// <summary>
+    /// Shows the back row in packages view and hides it elsewhere.
+    /// </summary>
+    /// <remarks>
+    /// One method rather than two toggles: the button and its rule are one band, and the two
+    /// call sites below would otherwise have to remember to set both.
+    /// </remarks>
+    private void ApplyBackVisibility()
+    {
+        bool show = _currentViewState == ViewState.Packages;
+        if (_backButton != null) _backButton.Visible = show;
+        if (_backRule != null) _backRule.Visible = show;
+    }
+
     private void UpdateLeftPanelHeader(string content)
     {
+        ApplyBackVisibility();
+
         if (_leftPanelHeader == null) return;
 
-        // In packages view the header IS the way back, so it names the key rather than just
-        // wearing an arrow. A bare arrow on a grey label reads as decoration; nothing said it
-        // was clickable or which key did the same thing.
-        var displayText = _currentViewState == ViewState.Packages
-            ? $"[cyan1]\u2190 Back[/] [grey42](Esc)[/]  [grey54]{content}[/]"
-            : $"[grey70]{content}[/]";
+        // The back affordance is the button above, not this label, so the header is just the
+        // label again. It stays clickable for anyone who learned that route.
+        var displayText = $"[grey70]{content}[/]";
 
         _leftPanelHeader.SetContent(new List<string> { displayText });
     }

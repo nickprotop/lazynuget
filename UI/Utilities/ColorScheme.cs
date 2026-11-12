@@ -40,6 +40,17 @@ public static class ColorScheme
     public static readonly Color ScrollbarThumbUnfocusedColor = new Color(58, 64, 75);
     public static readonly Color ScrollbarTrackColor = new Color(31, 34, 41);
 
+    // Selection in the project list. Grey35 sat almost on top of the grey42 sub-caption, so
+    // the "N pkg / framework" line vanished on the row you were actually looking at. This is
+    // dark enough for the dim greys to survive and tinted so the selection still reads as a
+    // selection rather than as a slightly different grey.
+    public static readonly Color SelectionBackground = new Color(38, 48, 62);
+
+    // Button faces: raised off the surface they sit on, so a button reads as pressable
+    // rather than as coloured text.
+    public static readonly Color ButtonFace = new Color(48, 54, 65);
+    public static readonly Color ButtonFaceFocused = new Color(70, 92, 112);
+
     // Text colors
     public static readonly Color PrimaryText = Color.Cyan1;
     public static readonly Color SecondaryText = Color.Grey70;

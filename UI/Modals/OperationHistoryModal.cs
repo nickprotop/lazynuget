@@ -7,6 +7,7 @@ using SharpConsoleUI.Layout;
 using LazyNuGet.Models;
 using LazyNuGet.Repositories;
 using LazyNuGet.Services;
+using LazyNuGet.UI.Components;
 using LazyNuGet.UI.Utilities;
 using AsyncHelper = LazyNuGet.Services.AsyncHelper;
 using SharpConsoleUI.Parsing;
@@ -45,7 +46,8 @@ public class OperationHistoryModal : ModalBase<bool>
     private FilterStatus _filterStatus = FilterStatus.All;
 
     // Controls
-    private ListControl? _historyList;
+    private TableControl? _historyTable;
+    private readonly HistoryTableDataSource _historySource = new();
     private MarkupControl? _statusLabel;
     private MarkupControl? _filterLabel;
     private ButtonControl? _retryButton;
@@ -57,7 +59,7 @@ public class OperationHistoryModal : ModalBase<bool>
     // Event handler references for cleanup
     private EventHandler<int>? _typeDropdownHandler;
     private EventHandler<int>? _statusDropdownHandler;
-    private EventHandler<int>? _historyListHandler;
+    private EventHandler<int>? _historySelectionHandler;
     private EventHandler<ButtonControl>? _retryButtonHandler;
     private EventHandler<ButtonControl>? _rollbackButtonHandler;
     private EventHandler<ButtonControl>? _clearButtonHandler;
@@ -176,23 +178,30 @@ public class OperationHistoryModal : ModalBase<bool>
             .Build();
 
         // History list (simple mode - no selection markers)
-        _historyList = Controls.List()
-            .SimpleMode()
-            .WithAlignment(HorizontalAlignment.Stretch)
+        // A table, not a list: status, operation, description, duration and age were five
+        // fields packed into one string with parentheses and dashes acting as columns.
+        _historyTable = Controls.Table()
+            .WithDataSource(_historySource)
+            .WithHorizontalAlignment(HorizontalAlignment.Stretch)
             .WithVerticalAlignment(VerticalAlignment.Fill)
-            .WithColors(Color.Grey93, ColorScheme.StatusBarBackground)
-            .WithFocusedColors(Color.Grey93, ColorScheme.StatusBarBackground)
-            .WithHighlightColors(Color.White, Color.Grey35)
             .WithMargin(2, 0, 2, 1)
+            .ShowHeader()
+            .WithHeaderColors(Color.Grey93, ColorScheme.HeaderBackground)
+            .WithColors(Color.Grey85, ColorScheme.InsetBackground)
+            .WithBorderColor(ColorScheme.BorderColor)
+            .SingleLine()
+            .WithColumnSeparator('\u2502', ColorScheme.RuleColor, padded: true)
+            .Interactive()
+            .WithSorting()
             .Build();
 
-        _historyListHandler = (s, idx) =>
+        _historySelectionHandler = (s, idx) =>
         {
-            var selectedEntry = _historyList?.SelectedItem?.Tag as OperationHistoryEntry;
+            var selectedEntry = SelectedEntry();
             _retryButton!.IsEnabled = selectedEntry != null && !selectedEntry.Success;
             _rollbackButton!.IsEnabled = IsRollbackable(selectedEntry);
         };
-        _historyList.SelectedIndexChanged += _historyListHandler;
+        _historyTable.SelectedRowChanged += _historySelectionHandler;
 
         // Filter label
         _filterLabel = Controls.Markup()
@@ -274,7 +283,7 @@ public class OperationHistoryModal : ModalBase<bool>
         Modal.AddControl(header);
         Modal.AddControl(_statusLabel);
         Modal.AddControl(filterToolbar);
-        Modal.AddControl(_historyList);
+        Modal.AddControl(_historyTable);
         Modal.AddControl(_filterLabel);
         Modal.AddControl(separator2);
         Modal.AddControl(buttonGrid);
@@ -378,8 +387,8 @@ public class OperationHistoryModal : ModalBase<bool>
         if (_statusDropdown != null && _statusDropdownHandler != null)
             _statusDropdown.SelectedIndexChanged -= _statusDropdownHandler;
 
-        if (_historyList != null && _historyListHandler != null)
-            _historyList.SelectedIndexChanged -= _historyListHandler;
+        if (_historyTable != null && _historySelectionHandler != null)
+            _historyTable.SelectedRowChanged -= _historySelectionHandler;
 
         if (_retryButton != null && _retryButtonHandler != null)
             _retryButton.Click -= _retryButtonHandler;
@@ -427,63 +436,33 @@ public class OperationHistoryModal : ModalBase<bool>
             $"[{ColorScheme.MutedMarkup}]F1:All  F2:Restore  F3:Update  F4:Add  F5:Remove  |  F6:All Status  F7:Success  F8:Failed[/]"
         });
 
-        // Populate list
-        _historyList?.ClearItems();
+        // Hand the filtered entries to the data source: it formats each cell when the row is
+        // about to be painted, instead of building one packed string per entry here.
+        _historySource.SetEntries(items);
 
         if (!items.Any())
         {
-            var emptyItem = new ListItem($"[{ColorScheme.MutedMarkup}]No operations found matching current filters[/]");
-            emptyItem.Tag = null;
-            _historyList?.AddItem(emptyItem);
             _retryButton!.IsEnabled = false;
             return;
         }
 
-        foreach (var entry in items)
-        {
-            var icon = entry.Type switch
-            {
-                OperationType.Restore => "🔄",
-                OperationType.Update => "⬆",
-                OperationType.Add => "➕",
-                OperationType.Remove => "➖",
-                _ => "•"
-            };
-
-            var statusIcon = entry.Success ? "✓" : "✗";
-            var statusColor = entry.Success ? ColorScheme.SuccessMarkup : ColorScheme.ErrorMarkup;
-
-            var timeAgo = GetTimeAgo(entry.Timestamp);
-            var durationText = $"{entry.Duration.TotalSeconds:F1}s";
-
-            // Highlight batch operations (when PackageId is null and description contains package count)
-            var isBatchOperation = entry.PackageId == null &&
-                (entry.Description.Contains("packages in") || entry.Description.Contains("packages"));
-
-            var batchIndicator = isBatchOperation ? "📦 " : "";
-            var undoHint = (entry.Type == OperationType.Update && !string.IsNullOrEmpty(entry.PreviousVersion) && entry.Success)
-                ? $" [{ColorScheme.MutedMarkup}](undo available)[/]" : "";
-            var text = $"[{statusColor}]{statusIcon}[/] {icon} {batchIndicator}[{ColorScheme.PrimaryMarkup}]{MarkupParser.Escape(entry.Description)}[/] [{ColorScheme.MutedMarkup}]({durationText}) - {timeAgo}[/]{undoHint}";
-
-            if (!entry.Success && !string.IsNullOrEmpty(entry.ErrorMessage))
-            {
-                text += $"\n    [{ColorScheme.ErrorMarkup}]{MarkupParser.Escape(entry.ErrorMessage)}[/]";
-            }
-
-            var listItem = new ListItem(text);
-            listItem.Tag = entry;
-            _historyList?.AddItem(listItem);
-        }
-
         // Enable/disable retry and rollback buttons based on selection
-        var selectedEntry = _historyList?.SelectedItem?.Tag as OperationHistoryEntry;
+        var selectedEntry = SelectedEntry();
         _retryButton!.IsEnabled = selectedEntry != null && !selectedEntry.Success;
         _rollbackButton!.IsEnabled = IsRollbackable(selectedEntry);
     }
 
+    /// <summary>The selected entry, read through the data source.</summary>
+    /// <remarks>
+    /// A table over a data source has no TableRow objects, so the selected row's Tag comes
+    /// from the source rather than from a row instance.
+    /// </remarks>
+    private OperationHistoryEntry? SelectedEntry() =>
+        _historyTable == null ? null : _historySource.EntryAt(_historyTable.SelectedRowIndex);
+
     private async Task HandleRetryAsync()
     {
-        var selectedEntry = _historyList?.SelectedItem?.Tag as OperationHistoryEntry;
+        var selectedEntry = SelectedEntry();
         if (selectedEntry == null || selectedEntry.Success) return;
 
         // Close history modal
@@ -501,7 +480,7 @@ public class OperationHistoryModal : ModalBase<bool>
 
     private async Task HandleRollbackAsync()
     {
-        var selectedEntry = _historyList?.SelectedItem?.Tag as OperationHistoryEntry;
+        var selectedEntry = SelectedEntry();
         if (selectedEntry == null || !selectedEntry.Success) return;
         if (!IsRollbackable(selectedEntry)) return;
 
@@ -765,21 +744,5 @@ public class OperationHistoryModal : ModalBase<bool>
                 timeout: 3000,
                 parentWindow: parentWindow);
         }
-    }
-
-    private static string GetTimeAgo(DateTime timestamp)
-    {
-        var elapsed = DateTime.Now - timestamp;
-
-        if (elapsed.TotalSeconds < 60)
-            return $"{(int)elapsed.TotalSeconds}s ago";
-        if (elapsed.TotalMinutes < 60)
-            return $"{(int)elapsed.TotalMinutes}m ago";
-        if (elapsed.TotalHours < 24)
-            return $"{(int)elapsed.TotalHours}h ago";
-        if (elapsed.TotalDays < 7)
-            return $"{(int)elapsed.TotalDays}d ago";
-
-        return timestamp.ToString("MMM dd, HH:mm");
     }
 }
